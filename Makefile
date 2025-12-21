@@ -42,7 +42,7 @@ LOBJS		=  lib/syscall.o\
 			lib/string.o lib/misc.o\
 			lib/open.o lib/read.o lib/write.o lib/close.o lib/unlink.o\
 			lib/lseek.o\
-			lib/getpid.o lib/stat.o\
+			lib/getpid.o lib/getprocs.o lib/clear.o lib/kill.o lib/stat.o\
 			lib/fork.o lib/exit.o lib/wait.o lib/exec.o
 DASMOUTPUT	= kernel.bin.asm
 
@@ -171,6 +171,15 @@ lib/unlink.o: lib/unlink.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 lib/getpid.o: lib/getpid.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+lib/getprocs.o: lib/getprocs.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+lib/clear.o: lib/clear.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+lib/kill.o: lib/kill.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 lib/syslog.o: lib/syslog.c

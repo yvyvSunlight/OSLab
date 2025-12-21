@@ -10,6 +10,8 @@ static void list_file(const char *path, const char *label, const struct stat *in
 static void handle_target(const char *target, int show_header);
 static char mode_to_char(int mode);
 static void report_error(const char *target, const char *reason);
+static void print_entry(const char *name, const struct stat *info);
+static void print_table_header(void);
 
 int main(int argc, char *argv[])
 {
@@ -47,6 +49,7 @@ static void handle_target(const char *target, int show_header)
 		list_directory(normalized);
 	} else {
 		const char *label = (target && target[0]) ? target : normalized;
+		print_table_header();
 		list_file(normalized, label, &info);
 	}
 }
@@ -70,6 +73,8 @@ static void list_directory(const char *path)
 		return;
 	}
 
+	print_table_header();
+
 	total = dir_info.st_size;
 	while (bytes_read < total) {
 		int n;
@@ -92,9 +97,9 @@ static void list_directory(const char *path)
 
 			build_child_path(path, entry.name, child_path);
 			if (stat(child_path, &child_info) == 0)
-				printf("%c %s\n", mode_to_char(child_info.st_mode), entry.name);
+				print_entry(entry.name, &child_info);
 			else
-				printf("? %s\n", entry.name);
+				printf("? - - %s\n", entry.name);
 		}
 	}
 
@@ -104,7 +109,7 @@ static void list_directory(const char *path)
 static void list_file(const char *path, const char *label, const struct stat *info)
 {
 	const char *name = (label && label[0]) ? label : path;
-	printf("%c %s\n", mode_to_char(info->st_mode), name);
+	print_entry(name, info);
 }
 
 static void normalize_path(const char *input, char *output)
@@ -173,4 +178,18 @@ static void report_error(const char *target, const char *reason)
 		printf("ls: %s: %s\n", target, reason);
 	else
 		printf("ls: %s\n", reason);
+}
+
+static void print_entry(const char *name, const struct stat *info)
+{
+	printf("%c %d %d %s\n",
+	       mode_to_char(info->st_mode),
+	       info->st_ino,
+	       info->st_size,
+	       name);
+}
+
+static void print_table_header(void)
+{
+	printf("T INODE SIZE NAME\n");
 }

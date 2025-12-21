@@ -12,7 +12,7 @@ CFLAGS		= -I ../include/ -I ../include/sys/ -c -fno-builtin -fno-stack-protector
 LDFLAGS		= -Ttext 0x1000
 DASMFLAGS	= -D
 LIB		= ../lib/orangescrt.a
-BIN		= echo pwd ls
+BIN		= echo pwd ls kill touch edit rm ps clear
 
 # All Phony Targets
 .PHONY : everything final clean realclean disasm all install
@@ -58,4 +58,40 @@ ls.o: ls.c ../include/stdio.h ../include/string.h ../include/sys/const.h ../incl
 	$(CC) $(CFLAGS) -o $@ $<
 
 ls : ls.o start.o $(LIB)
+	$(LD) $(LDFLAGS) -o $@ $?
+
+kill.o: kill.c ../include/stdio.h ../include/string.h
+	$(CC) $(CFLAGS) -o $@ $<
+
+kill : kill.o start.o $(LIB)
+	$(LD) $(LDFLAGS) -o $@ $?
+
+touch.o: touch.c ../include/stdio.h ../include/string.h ../include/sys/const.h
+	$(CC) $(CFLAGS) -o $@ $<
+
+touch : touch.o start.o $(LIB)
+	$(LD) $(LDFLAGS) -o $@ $?
+
+edit.o: edit.c ../include/stdio.h ../include/string.h ../include/sys/const.h
+	$(CC) $(CFLAGS) -o $@ $<
+
+edit : edit.o start.o $(LIB)
+	$(LD) $(LDFLAGS) -o $@ $?
+
+rm.o: rm.c ../include/stdio.h ../include/string.h
+	$(CC) $(CFLAGS) -o $@ $<
+
+rm : rm.o start.o $(LIB)
+	$(LD) $(LDFLAGS) -o $@ $?
+
+ps.o: ps.c ../include/stdio.h ../include/string.h ../include/sys/const.h
+	$(CC) $(CFLAGS) -o $@ $<
+
+ps : ps.o start.o $(LIB)
+	$(LD) $(LDFLAGS) -o $@ $?
+
+clear.o: clear.c ../include/stdio.h
+	$(CC) $(CFLAGS) -o $@ $<
+
+clear : clear.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?

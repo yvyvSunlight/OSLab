@@ -63,6 +63,18 @@ struct time {
 	u32 second;
 };
 
+#define PROC_NAME_LEN 16
+
+struct proc_info {
+	int pid;
+	int parent_pid;
+	int flags;
+	int queue_level;
+	int ticks;
+	int priority;
+	char name[PROC_NAME_LEN];
+};
+
 #define  BCD_TO_DEC(x)      ( (x >> 4) * 10 + (x & 0x0f) )
 
 /*========================*
@@ -146,6 +158,15 @@ PUBLIC int	execv		(const char * path, char * argv[]);
 
 /* lib/stat.c */
 PUBLIC int	stat		(const char *path, struct stat *buf);
+
+/* lib/getprocs.c */
+PUBLIC int	get_procs	(struct proc_info *buf, int max);
+
+/* lib/clear.c */
+PUBLIC int	clear_screen_cmd	();
+
+/* lib/kill.c */
+PUBLIC int	kill		(int pid);
 
 /* lib/syslog.c */
 PUBLIC	int	syslog		(const char *fmt, ...);

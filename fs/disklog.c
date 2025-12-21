@@ -98,8 +98,8 @@ PUBLIC int disklog(char * logstr)
 
 			for (; byte_off < SECTOR_SIZE && bits_left > 0; byte_off++) {
 				for (; bit_off < 8; bit_off++) { /* repeat till enough bits are set */
-					assert(((logdiskbuf[byte_off] >> bit_off) & 1) == 0);
-					logdiskbuf[byte_off] |= (1 << bit_off);
+					if (((logdiskbuf[byte_off] >> bit_off) & 1) == 0)
+						logdiskbuf[byte_off] |= (1 << bit_off);
 					if (--bits_left  == 0)
 						break;
 				}

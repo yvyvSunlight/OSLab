@@ -22,6 +22,7 @@
 
 
 PRIVATE void cleanup(struct proc * proc);
+PRIVATE int terminate_process(int pid, int status);
 
 /*****************************************************************************
  *                                do_fork
@@ -174,8 +175,59 @@ PUBLIC int do_fork()
  *****************************************************************************/
 PUBLIC void do_exit(int status)
 {
+	terminate_process(mm_msg.source, status);
+}
+
+/*****************************************************************************
+ *                                do_kill
+ *************************************************************************//**
+ * Kill a process by pid.
+ *
+ * @return 0 on success, -1 on invalid pid/state.
+ *****************************************************************************/
+PUBLIC int do_kill()
+{
+	int target = mm_msg.PID;
+	int status = mm_msg.STATUS ? mm_msg.STATUS : 9;
+
+	if (target < NR_TASKS + NR_NATIVE_PROCS ||
+	    target >= NR_TASKS + NR_PROCS)
+		return -1;
+	if (proc_table[target].p_flags == FREE_SLOT)
+		return -1;
+
+	return terminate_process(target, status);
+}
+
+/*****************************************************************************
+ *                                cleanup
+ *****************************************************************************/
+/**
+ * Do the last jobs to clean up a proc thoroughly:
+ *     - Send proc's parent a message to unblock it, and
+ *     - release proc's proc_table[] entry
+ * 
+ * @param proc  Process to clean up.
+ *****************************************************************************/
+PRIVATE void cleanup(struct proc * proc)
+{
+	MESSAGE msg2parent;
+	msg2parent.type = SYSCALL_RET;
+	msg2parent.PID = proc2pid(proc);
+	msg2parent.STATUS = proc->exit_status;
+	send_recv(SEND, proc->p_parent, &msg2parent);
+
+	proc->p_flags = FREE_SLOT;
+}
+
+/*****************************************************************************
+ *                             terminate_process
+ *************************************************************************//**
+ * Shared exit logic used by both exit() and kill().
+ *****************************************************************************/
+PRIVATE int terminate_process(int pid, int status)
+{
 	int i;
-	int pid = mm_msg.source; /* PID of caller */
 	int parent_pid = proc_table[pid].p_parent;
 	struct proc * p = &proc_table[pid];
 
@@ -208,27 +260,8 @@ PUBLIC void do_exit(int status)
 			}
 		}
 	}
-}
 
-/*****************************************************************************
- *                                cleanup
- *****************************************************************************/
-/**
- * Do the last jobs to clean up a proc thoroughly:
- *     - Send proc's parent a message to unblock it, and
- *     - release proc's proc_table[] entry
- * 
- * @param proc  Process to clean up.
- *****************************************************************************/
-PRIVATE void cleanup(struct proc * proc)
-{
-	MESSAGE msg2parent;
-	msg2parent.type = SYSCALL_RET;
-	msg2parent.PID = proc2pid(proc);
-	msg2parent.STATUS = proc->exit_status;
-	send_recv(SEND, proc->p_parent, &msg2parent);
-
-	proc->p_flags = FREE_SLOT;
+	return 0;
 }
 
 /*****************************************************************************

@@ -57,6 +57,48 @@ PUBLIC void task_sys()
 				  sizeof(t));
 			send_recv(SEND, src, &msg);
 			break;
+		case GET_PROCS:
+		{
+			int limit = msg.CNT;
+			int count = 0;
+			if (limit > 0 && msg.BUF) {
+				struct proc *p;
+				for (p = &FIRST_PROC; p <= &LAST_PROC && count < limit; p++) {
+					if (p->p_flags == FREE_SLOT)
+						continue;
+					struct proc_info info;
+					memset(&info, 0, sizeof(info));
+					info.pid = proc2pid(p);
+					info.parent_pid = p->p_parent;
+					info.flags = p->p_flags;
+					info.queue_level = p->queue_level;
+					info.ticks = p->ticks;
+					info.priority = p->priority;
+					{
+						int copy_len = strlen(p->name);
+						if (copy_len >= PROC_NAME_LEN)
+							copy_len = PROC_NAME_LEN - 1;
+						memcpy(info.name, p->name, copy_len);
+						info.name[copy_len] = 0;
+					}
+					char *dest = (char*)msg.BUF + count * sizeof(struct proc_info);
+					phys_copy(va2la(src, dest),
+						  va2la(TASK_SYS, &info),
+						  sizeof(info));
+					count++;
+				}
+			}
+			msg.type = SYSCALL_RET;
+			msg.RETVAL = count;
+			send_recv(SEND, src, &msg);
+			break;
+		}
+		case CLEAR_SCREEN:
+			console_clear(&console_table[current_console]);
+			msg.type = SYSCALL_RET;
+			msg.RETVAL = 0;
+			send_recv(SEND, src, &msg);
+			break;
 		default:
 			panic("unknown msg type");
 			break;

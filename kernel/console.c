@@ -28,6 +28,7 @@ PRIVATE void	set_video_start_addr(u32 addr);
 PRIVATE void	flush(CONSOLE* con);
 PRIVATE	void	w_copy(unsigned int dst, const unsigned int src, int size);
 PRIVATE void	clear_screen(int pos, int len);
+PUBLIC void	console_clear(CONSOLE* con);
 
 /*****************************************************************************
  *                                init_screen
@@ -153,6 +154,20 @@ PRIVATE void clear_screen(int pos, int len)
 		*pch++ = ' ';
 		*pch++ = DEFAULT_CHAR_COLOR;
 	}
+}
+
+/*****************************************************************************
+ *                              console_clear
+ *****************************************************************************/
+PUBLIC void console_clear(CONSOLE* con)
+{
+	if (!con)
+		return;
+	clear_screen(con->orig, con->con_size);
+	con->cursor = con->orig;
+	con->crtc_start = con->orig;
+	con->is_full = 0;
+	flush(con);
 }
 
 

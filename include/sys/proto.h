@@ -110,6 +110,7 @@ PUBLIC int		free_mem(int pid);
 /* mm/forkexit.c */
 PUBLIC int		do_fork();
 PUBLIC void		do_exit(int status);
+PUBLIC int		do_kill();
 PUBLIC void		do_wait();
 
 /* mm/exec.c */
@@ -121,6 +122,7 @@ PUBLIC void scroll_screen(CONSOLE* p_con, int direction);
 PUBLIC void select_console(int nr_console);
 PUBLIC void init_screen(TTY* p_tty);
 PUBLIC int  is_current_console(CONSOLE* p_con);
+PUBLIC void console_clear(CONSOLE* p_con);
 
 /* proc.c */
 PUBLIC	void	schedule();

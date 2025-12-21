@@ -167,7 +167,7 @@ enum msgtype {
 	HARD_INT = 1,
 
 	/* SYS task */
-	GET_TICKS, GET_PID, GET_RTC_TIME,
+	GET_TICKS, GET_PID, GET_RTC_TIME, GET_PROCS, CLEAR_SCREEN,
 
 	/* FS */
 	OPEN, CLOSE, READ, WRITE, LSEEK, STAT, UNLINK,
@@ -177,6 +177,7 @@ enum msgtype {
 
 	/* MM */
 	EXEC, WAIT,
+	KILL,
 
 	/* FS & MM */
 	FORK, EXIT,
