@@ -124,6 +124,7 @@ PUBLIC int  is_current_console(CONSOLE* p_con);
 
 /* proc.c */
 PUBLIC	void	schedule();
+PUBLIC	void	proc_tick_exhausted(struct proc* p);
 PUBLIC	void*	va2la(int pid, void* va);
 PUBLIC	int	ldt_seg_linear(struct proc* p, int idx);
 PUBLIC	void	reset_msg(MESSAGE* p);

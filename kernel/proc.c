@@ -17,11 +17,81 @@
 #include "global.h"
 #include "proto.h"
 
+#define MLFQ_LEVELS        3
+#define MLFQ_MAX_LEVEL     (MLFQ_LEVELS - 1)
+#define MLFQ_BOOST_INTERVAL 200
+
+PRIVATE int last_mlfq_boost = 0;
+
+PRIVATE int  mlfq_calc_slice(const struct proc* p);
+PRIVATE void mlfq_reset_ticks(struct proc* p);
+PRIVATE void mlfq_demote(struct proc* p);
+PRIVATE void mlfq_promote_all(void);
+PRIVATE void mlfq_maybe_boost(void);
+PRIVATE int  mlfq_elapsed_since_last_boost(void);
+
 PRIVATE void block(struct proc* p);
 PRIVATE void unblock(struct proc* p);
 PRIVATE int  msg_send(struct proc* current, int dest, MESSAGE* m);
 PRIVATE int  msg_receive(struct proc* current, int src, MESSAGE* m);
 PRIVATE int  deadlock(int src, int dest);
+
+PRIVATE int mlfq_calc_slice(const struct proc* p)
+{
+	int level = p->queue_level;
+	if (level < 0)
+		level = 0;
+	if (level > MLFQ_MAX_LEVEL)
+		level = MLFQ_MAX_LEVEL;
+
+	int base = p->priority > 0 ? p->priority : 1;
+	int slice = base << level;
+	if (slice <= 0)
+		slice = 1;
+	return slice;
+}
+
+PRIVATE void mlfq_reset_ticks(struct proc* p)
+{
+	if (!p)
+		return;
+	p->ticks = mlfq_calc_slice(p);
+}
+
+PRIVATE void mlfq_demote(struct proc* p)
+{
+	if (!p)
+		return;
+	if (p->queue_level < MLFQ_MAX_LEVEL)
+		p->queue_level++;
+	mlfq_reset_ticks(p);
+}
+
+PRIVATE void mlfq_promote_all(void)
+{
+	struct proc* p;
+	for (p = &FIRST_PROC; p <= &LAST_PROC; p++) {
+		if (p->p_flags == FREE_SLOT)
+			continue;
+		p->queue_level = 0;
+		mlfq_reset_ticks(p);
+	}
+}
+
+PRIVATE int mlfq_elapsed_since_last_boost(void)
+{
+	if (ticks >= last_mlfq_boost)
+		return ticks - last_mlfq_boost;
+	return (MAX_TICKS - last_mlfq_boost) + ticks;
+}
+
+PRIVATE void mlfq_maybe_boost(void)
+{
+	if (mlfq_elapsed_since_last_boost() >= MLFQ_BOOST_INTERVAL) {
+		mlfq_promote_all();
+		last_mlfq_boost = ticks;
+	}
+}
 
 /*****************************************************************************
  *                                schedule
@@ -32,24 +102,39 @@ PRIVATE int  deadlock(int src, int dest);
  *****************************************************************************/
 PUBLIC void schedule()
 {
-	struct proc*	p;
-	int		greatest_ticks = 0;
+	struct proc* p;
+	struct proc* best = 0;
+	int best_level = MLFQ_LEVELS;
 
-	while (!greatest_ticks) {
-		for (p = &FIRST_PROC; p <= &LAST_PROC; p++) {
-			if (p->p_flags == 0) {
-				if (p->ticks > greatest_ticks) {
-					greatest_ticks = p->ticks;
-					p_proc_ready = p;
-				}
-			}
+	mlfq_maybe_boost();
+
+	for (p = &FIRST_PROC; p <= &LAST_PROC; p++) {
+		if (p->p_flags != 0)
+			continue;
+		if (p->ticks <= 0)
+			mlfq_reset_ticks(p);
+		if (!best ||
+		    p->queue_level < best_level ||
+		    (p->queue_level == best_level && p->ticks > best->ticks)) {
+			best = p;
+			best_level = p->queue_level;
 		}
-
-		if (!greatest_ticks)
-			for (p = &FIRST_PROC; p <= &LAST_PROC; p++)
-				if (p->p_flags == 0)
-					p->ticks = p->priority;
 	}
+
+	if (!best) {
+		panic("{schedule} no runnable process");
+	}
+
+	p_proc_ready = best;
+}
+
+PUBLIC void proc_tick_exhausted(struct proc* p)
+{
+	if (!p)
+		return;
+	if (p->p_flags != 0)
+		return;
+	mlfq_demote(p);
 }
 
 /*****************************************************************************
@@ -190,6 +275,7 @@ PRIVATE void block(struct proc* p)
 PRIVATE void unblock(struct proc* p)
 {
 	assert(p->p_flags == 0);
+	mlfq_reset_ticks(p);
 }
 
 /*****************************************************************************
@@ -546,6 +632,7 @@ PUBLIC void dump_proc(struct proc* p)
 	sprintf(info, "ldt_sel: 0x%x.  ", p->ldt_sel); disp_color_str(info, text_color);
 	sprintf(info, "ticks: 0x%x.  ", p->ticks); disp_color_str(info, text_color);
 	sprintf(info, "priority: 0x%x.  ", p->priority); disp_color_str(info, text_color);
+	sprintf(info, "queue_level: 0x%x.  ", p->queue_level); disp_color_str(info, text_color);
 	/* sprintf(info, "pid: 0x%x.  ", p->pid); disp_color_str(info, text_color); */
 	sprintf(info, "name: %s.  ", p->name); disp_color_str(info, text_color);
 	disp_color_str("\n", text_color);

@@ -48,6 +48,7 @@ PUBLIC void clock_handler(int irq)
 		return;
 	}
 
+	proc_tick_exhausted(p_proc_ready);
 	schedule();
 
 }
