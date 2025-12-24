@@ -254,6 +254,9 @@ void untar(const char * filename)
 		i++;
 
 		struct posix_tar_header * phdr = (struct posix_tar_header *)buf;
+		char name_bak[105];
+		memset(name_bak, 0, sizeof(name_bak));
+		memcpy(name_bak, phdr->name, 100); /* tar name field is 100 bytes */
 
 		/* calculate the file size */
 		char * p = phdr->size;
@@ -286,9 +289,9 @@ void untar(const char * filename)
 		close(fdout);
 		// 将奇偶校验值写入
 		if (need_checksum) {
-			int ret = set_checksum(phdr->name, checksum);
+			int ret = set_checksum(name_bak, checksum);
 			if (ret != 0)
-				printf("    checksum set failed for %s\n", phdr->name);
+				printf("     for %s\n", name_bak);
 		}
 	}
 

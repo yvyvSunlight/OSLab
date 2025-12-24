@@ -100,6 +100,8 @@ PUBLIC void task_fs()
 		msg_name[FORK]   = "FORK";
 		msg_name[EXIT]   = "EXIT";
 		msg_name[STAT]   = "STAT";
+		msg_name[SET_CHECKSUM] = "SET_CHECKSUM";
+		msg_name[GET_CHECKSUM] = "GET_CHECKSUM";
 
 		switch (msgtype) {
 		case UNLINK:
@@ -116,6 +118,9 @@ PUBLIC void task_fs()
 		case STAT:
 			break;
 		case RESUME_PROC:
+			break;
+		case SET_CHECKSUM:
+		case GET_CHECKSUM:
 			break;
 		default:
 			assert(0);
