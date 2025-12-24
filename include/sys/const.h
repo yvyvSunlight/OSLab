@@ -170,7 +170,7 @@ enum msgtype {
 	GET_TICKS, GET_PID, GET_RTC_TIME, GET_PROCS, CLEAR_SCREEN,
 
 	/* FS */
-	OPEN, CLOSE, READ, WRITE, LSEEK, STAT, UNLINK,
+	OPEN, CLOSE, READ, WRITE, LSEEK, STAT, UNLINK, SET_CHECKSUM, GET_CHECKSUM,
 
 	/* FS & TTY */
 	SUSPEND_PROC, RESUME_PROC,
@@ -193,6 +193,7 @@ enum msgtype {
 	DEV_IOCTL
 };
 
+#define	CHECKSUM	u.m3.m3i3
 /* macros for messages */
 #define	FD		u.m3.m3i1
 #define	PATHNAME	u.m3.m3p1

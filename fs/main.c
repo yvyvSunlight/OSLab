@@ -62,6 +62,12 @@ PUBLIC void task_fs()
 		case UNLINK:
 			fs_msg.RETVAL = do_unlink();
 			break;
+		case SET_CHECKSUM:
+			fs_msg.RETVAL = do_set_checksum();
+			break;
+		case GET_CHECKSUM:
+			fs_msg.RETVAL = do_get_checksum();
+			break;
 		case RESUME_PROC:
 			src = fs_msg.PROC_NR;
 			break;
@@ -466,7 +472,9 @@ PUBLIC struct super_block * get_super_block(int dev)
  * 
  * @return The inode ptr requested.
  *****************************************************************************/
-PUBLIC struct inode * get_inode(int dev, int num)
+// 给定 (dev, inode号)，返回内存缓冲区中对应的inode的指针。如果已在缓存中 → 直接返回；否则 → 从磁盘读入inode_table。
+	PUBLIC struct inode *
+	get_inode(int dev, int num)
 {
 	if (num == 0)
 		return 0;
@@ -495,6 +503,7 @@ PUBLIC struct inode * get_inode(int dev, int num)
 	q->i_cnt = 1;
 
 	struct super_block * sb = get_super_block(dev);
+	// 计算inode在磁盘中的扇区号
 	int blk_nr = 1 + 1 + sb->nr_imap_sects + sb->nr_smap_sects +
 		((num - 1) / (SECTOR_SIZE / INODE_SIZE));
 	RD_SECT(dev, blk_nr);
@@ -506,6 +515,7 @@ PUBLIC struct inode * get_inode(int dev, int num)
 	q->i_size = pinode->i_size;
 	q->i_start_sect = pinode->i_start_sect;
 	q->i_nr_sects = pinode->i_nr_sects;
+	q->check_sum = pinode->check_sum;
 	return q;
 }
 
@@ -534,7 +544,8 @@ PUBLIC void put_inode(struct inode * pinode)
  * 
  * @param p I-node ptr.
  *****************************************************************************/
-PUBLIC void sync_inode(struct inode * p)
+// 将inode信息写入磁盘：根据inode号求出其在磁盘inode表中的扇区，将该扇区读到缓冲区，在对应偏移处更新数据，再写回
+ PUBLIC void sync_inode(struct inode * p)
 {
 	struct inode * pinode;
 	struct super_block * sb = get_super_block(p->i_dev);
@@ -548,6 +559,7 @@ PUBLIC void sync_inode(struct inode * p)
 	pinode->i_size = p->i_size;
 	pinode->i_start_sect = p->i_start_sect;
 	pinode->i_nr_sects = p->i_nr_sects;
+	pinode->check_sum = p->check_sum;
 	WR_SECT(p->i_dev, blk_nr);
 }
 

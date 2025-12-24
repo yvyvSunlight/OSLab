@@ -171,6 +171,56 @@ struct posix_tar_header
 	/* 500 */
 };
 
+PRIVATE u8 popcount8(u8 b)
+{
+	u8 cnt = 0;
+	while (b) {
+		cnt += b & 0x1;
+		b >>= 1;
+	}
+	return cnt;
+}
+
+PRIVATE u8 accumulate_checksum(const u8 * buf, int len, u8 seed)
+{
+	for (int i = 0; i < len; i++) {
+		seed ^= popcount8(buf[i]);
+	}
+	return seed;
+}
+
+PRIVATE int should_skip_checksum(const char * name)
+{
+	return strcmp(name, "kernel.bin") == 0 ||
+	       strcmp(name, "hdboot.bin") == 0 ||
+	       strcmp(name, "hdloader.bin") == 0;
+}
+
+// 计算已打开的文件的奇偶校验和
+PRIVATE int calc_checksum_fd(int fd, int total_len)
+{
+	u8 buf[SECTOR_SIZE];
+	int left = total_len;
+	u8 checksum = 0;
+
+	if (lseek(fd, 0, SEEK_SET) < 0)
+		return -1;
+
+	while (left > 0) {
+		int to_read = min((int)sizeof(buf), left);
+		int r = read(fd, buf, to_read);
+		if (r != to_read)
+			return -1;
+		checksum = accumulate_checksum(buf, r, checksum);
+		left -= r;
+	}
+
+	/* rewind for callers that reuse the fd */
+	lseek(fd, 0, SEEK_SET);
+
+	return checksum;
+}
+
 /*****************************************************************************
  *                                untar
  *****************************************************************************/
@@ -185,16 +235,17 @@ void untar(const char * filename)
 	int fd = open(filename, O_RDWR);
 	assert(fd != -1);
 
+	// 缓冲区，16个扇区
 	char buf[SECTOR_SIZE * 16];
 	int chunk = sizeof(buf);
 	int i = 0;
 	int bytes = 0;
 
 	while (1) {
+		// header block为512字节
 		bytes = read(fd, buf, SECTOR_SIZE);
-		assert(bytes == SECTOR_SIZE); /* size of a TAR file
-					       * must be multiple of 512
-					       */
+		assert(bytes == SECTOR_SIZE); 
+
 		if (buf[0] == 0) {
 			if (i == 0)
 				printf("    need not unpack the file.\n");
@@ -219,15 +270,26 @@ void untar(const char * filename)
 			return;
 		}
 		printf("    %s\n", phdr->name);
+		u8 checksum = 0;
+		int need_checksum = !should_skip_checksum(phdr->name);
 		while (bytes_left) {
 			int iobytes = min(chunk, bytes_left);
 			read(fd, buf,
 			     ((iobytes - 1) / SECTOR_SIZE + 1) * SECTOR_SIZE);
+			// 将压缩包的数据内容写到同名文件中 => 解压
 			bytes = write(fdout, buf, iobytes);
 			assert(bytes == iobytes);
+			if (need_checksum)
+				checksum = accumulate_checksum((u8*)buf, iobytes, checksum);
 			bytes_left -= iobytes;
 		}
 		close(fdout);
+		// 将奇偶校验值写入
+		if (need_checksum) {
+			int ret = set_checksum(phdr->name, checksum);
+			if (ret != 0)
+				printf("    checksum set failed for %s\n", phdr->name);
+		}
 	}
 
 	if (i) {
@@ -252,6 +314,7 @@ void untar(const char * filename)
  *****************************************************************************/
 void shabby_shell(const char * tty_name)
 {
+	// 0和1与输入输出是通过open顺序来绑定的
 	int fd_stdin  = open(tty_name, O_RDWR);
 	assert(fd_stdin  == 0);
 	int fd_stdout = open(tty_name, O_RDWR);
@@ -262,6 +325,11 @@ void shabby_shell(const char * tty_name)
 	while (1) {
 		write(1, "$ ", 2);
 		int r = read(0, rdbuf, 70);
+		
+		if (r <= 0)  continue;
+		// trim trailing LF
+		while (r > 0 && rdbuf[r - 1] == '\n') 
+			r--;
 		rdbuf[r] = 0;
 
 		int argc = 0;
@@ -293,14 +361,32 @@ void shabby_shell(const char * tty_name)
 				write(1, "}\n", 2);
 			}
 		}
+		// 如果找到命令，就先做校验，通过后fork执行
 		else {
+			struct stat s;
+			int verified = 0;
+			int stored = get_checksum(argv[0]);
+			if (stored >= 0 && stat(argv[0], &s) == 0) {
+				int current = calc_checksum_fd(fd, s.st_size);
+				if (current >= 0 && stored == current)
+					verified = 1;
+			}
+
+			if (!verified) {
+				printf("[checksum failed] %s\n", argv[0]);
+				close(fd);
+				continue;
+			}
+
+			printf("[checksum ok] %s\n", argv[0]);
 			close(fd);
+
 			int pid = fork();
 			if (pid != 0) { /* parent */
 				int s;
 				wait(&s);
 			}
-			else {	/* child */
+			else {\t/* child */
 				execv(argv[0], argv);
 			}
 		}
@@ -340,6 +426,7 @@ void Init()
 		}
 		else {	/* child process */
 			printf("[child is running, pid:%d]\n", getpid());
+			// 关闭占用的输入输出，在shabby_shell内部重新绑定
 			close(fd_stdin);
 			close(fd_stdout);
 			

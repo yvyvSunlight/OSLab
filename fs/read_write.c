@@ -54,6 +54,8 @@ PUBLIC int do_rdwt()
 
 	int imode = pin->i_mode & I_TYPE_MASK;
 
+	// 字符设备文件
+	// 如果是字符设备文件，那FS将不去磁盘读写数据块，而是把读写请求转发给对应的设备驱动（TTY 驱动）去完成
 	if (imode == I_CHAR_SPECIAL) {
 		int t = fs_msg.type == READ ? DEV_READ : DEV_WRITE;
 		fs_msg.type = t;
@@ -79,6 +81,7 @@ PUBLIC int do_rdwt()
 		if (fs_msg.type == READ)
 			pos_end = min(pos + len, pin->i_size);
 		else		/* WRITE */
+		// 边界条件是给文件分配的扇区的大小而不是文件现在的大小（？）
 			pos_end = min(pos + len, pin->i_nr_sects * SECTOR_SIZE);
 
 		int off = pos % SECTOR_SIZE;

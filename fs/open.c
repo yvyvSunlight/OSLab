@@ -49,6 +49,7 @@ PUBLIC int do_open()
 	int name_len = fs_msg.NAME_LEN;	/* length of filename */
 	int src = fs_msg.source;	/* caller proc nr. */
 	assert(name_len < MAX_PATH);
+	// 由于fs和用户进程分别在ring1和ring3，所在的段不一样，所以不能直接拷贝，而是需要先将逻辑地址转化为线性地址，再进行拷贝
 	phys_copy((void*)va2la(TASK_FS, pathname),
 		  (void*)va2la(src, fs_msg.PATHNAME),
 		  name_len);
@@ -363,6 +364,7 @@ PRIVATE struct inode * new_inode(int dev, int inode_nr, int start_sect)
 	new_inode->i_size = 0;
 	new_inode->i_start_sect = start_sect;
 	new_inode->i_nr_sects = NR_DEFAULT_FILE_SECTS;
+	new_inode->check_sum = 0;
 
 	new_inode->i_dev = dev;
 	new_inode->i_cnt = 1;

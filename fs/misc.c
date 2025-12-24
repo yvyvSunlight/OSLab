@@ -80,6 +80,74 @@ PUBLIC int do_stat()
 	return 0;
 }
 
+/****************************************************************************
+ *                           do_set_checksum
+ *****************************************************************************/
+PUBLIC int do_set_checksum()
+{
+	char pathname[MAX_PATH];
+	char filename[MAX_PATH];
+
+	int name_len = fs_msg.NAME_LEN;
+	int src = fs_msg.source;
+	assert(name_len < MAX_PATH);
+	phys_copy((void*)va2la(TASK_FS, pathname),
+		  (void*)va2la(src, fs_msg.PATHNAME),
+		  name_len);
+	pathname[name_len] = 0;
+
+	// 获取文件对应的inode号
+	int inode_nr = search_file(pathname);
+	if (inode_nr == INVALID_INODE)
+		return -1;
+
+	// 获取文件所在目录（根目录）的inode号
+	struct inode * dir_inode;
+	if (strip_path(filename, pathname, &dir_inode) != 0)
+		return -1;
+
+	struct inode * pin = get_inode(dir_inode->i_dev, inode_nr);
+	pin->check_sum = (u8)fs_msg.CHECKSUM;
+	
+	// 将文件的inode更新回磁盘
+	sync_inode(pin);
+	// 释放inode引用
+	put_inode(pin);
+
+	return 0;
+}
+
+/****************************************************************************
+ *                           do_get_checksum
+ *****************************************************************************/
+PUBLIC int do_get_checksum()
+{
+	char pathname[MAX_PATH];
+	char filename[MAX_PATH];
+
+	int name_len = fs_msg.NAME_LEN;
+	int src = fs_msg.source;
+	assert(name_len < MAX_PATH);
+	phys_copy((void*)va2la(TASK_FS, pathname),
+		  (void*)va2la(src, fs_msg.PATHNAME),
+		  name_len);
+	pathname[name_len] = 0;
+
+	int inode_nr = search_file(pathname);
+	if (inode_nr == INVALID_INODE)
+		return -1;
+
+	struct inode * dir_inode;
+	if (strip_path(filename, pathname, &dir_inode) != 0)
+		return -1;
+
+	struct inode * pin = get_inode(dir_inode->i_dev, inode_nr);
+	int checksum = pin->check_sum;
+	put_inode(pin);
+
+	return checksum;
+}
+
 /*****************************************************************************
  *                                search_file
  *****************************************************************************/
@@ -99,6 +167,7 @@ PUBLIC int search_file(char * path)
 	char filename[MAX_PATH];
 	memset(filename, 0, MAX_FILENAME_LEN);
 	struct inode * dir_inode;
+	// 去除文件路径的根目录符号，只保留文件名
 	if (strip_path(filename, path, &dir_inode) != 0)
 		return 0;
 
@@ -108,8 +177,11 @@ PUBLIC int search_file(char * path)
 	/**
 	 * Search the dir for the file.
 	 */
+	// 目录文件的起始扇区、所占扇区数量
 	int dir_blk0_nr = dir_inode->i_start_sect;
 	int nr_dir_blks = (dir_inode->i_size + SECTOR_SIZE - 1) / SECTOR_SIZE;
+	// 目录本质上就是一个文件，存放的内容是一个个 struct dir_entry，
+	// 这里是在算这个目录文件中一共分配过多少个目录项槽位
 	int nr_dir_entries =
 	  dir_inode->i_size / DIR_ENTRY_SIZE; /**
 					       * including unused slots
@@ -120,8 +192,10 @@ PUBLIC int search_file(char * path)
 	struct dir_entry * pde;
 	for (i = 0; i < nr_dir_blks; i++) {
 		RD_SECT(dir_inode->i_dev, dir_blk0_nr + i);
+		// 将一个扇区拆成若干目录项去读
 		pde = (struct dir_entry *)fsbuf;
 		for (j = 0; j < SECTOR_SIZE / DIR_ENTRY_SIZE; j++,pde++) {
+			// 找到文件，则返回其inode号
 			if (memcmp(filename, pde->name, MAX_FILENAME_LEN) == 0)
 				return pde->inode_nr;
 			if (++m > nr_dir_entries)
@@ -164,8 +238,7 @@ PUBLIC int search_file(char * path)
  * 
  * @return Zero if success, otherwise the pathname is not valid.
  *****************************************************************************/
-PUBLIC int strip_path(char * filename, const char * pathname,
-		      struct inode** ppinode)
+PUBLIC int strip_path(char * filename, const char * pathname, struct inode** ppinode)
 {
 	const char * s = pathname;
 	char * t = filename;

@@ -77,7 +77,8 @@ struct inode {
 	u32	i_size;		/**< File size */
 	u32	i_start_sect;	/**< The first sector of the data */
 	u32	i_nr_sects;	/**< How many sectors the file occupies */
-	u8	_unused[16];	/**< Stuff for alignment */
+	u8 check_sum;
+	u8	_unused[15];	/**< Stuff for alignment */
 
 	/* the following items are only present in memory */
 	int	i_dev;
@@ -105,6 +106,7 @@ struct inode {
  * @struct dir_entry
  * @brief  Directory Entry
  */
+// 用于将文件名映射到inode号
 struct dir_entry {
 	int	inode_nr;		/**< inode nr. */
 	char	name[MAX_FILENAME_LEN];	/**< Filename */
