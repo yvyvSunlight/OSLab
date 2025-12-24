@@ -386,7 +386,7 @@ void shabby_shell(const char * tty_name)
 				int s;
 				wait(&s);
 			}
-			else {\t/* child */
+			else {/* child */
 				execv(argv[0], argv);
 			}
 		}
