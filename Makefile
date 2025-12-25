@@ -16,8 +16,10 @@ CC		= gcc
 LD		= ld
 ASMBFLAGS	= -I boot/include/
 ASMKFLAGS	= -I include/ -I include/sys/ -f elf
-CFLAGS		= -I include/ -I include/sys/ -c -fno-builtin -Wall -fno-stack-protector -fpack-struct
-#CFLAGS		= -I include/ -c -fno-builtin -fno-stack-protector -fpack-struct -Wall
+CFLAGS = -I include/ -I include/sys/ -c -g -O0 -fno-omit-frame-pointer \
+         -fno-builtin -Wall -fno-stack-protector -fpack-struct
+# CFLAGS		= -I include/ -I include/sys/ -c -fno-builtin -Wall -fno-stack-protector -fpack-struct
+# CFLAGS		= -I include/ -c -fno-builtin -fno-stack-protector -fpack-struct -Wall
 LDFLAGS		= -Ttext $(ENTRYPOINT) -Map krnl.map
 DASMFLAGS	= -D
 ARFLAGS		= rcs
@@ -46,6 +48,11 @@ LOBJS		=  lib/syscall.o\
 			lib/fork.o lib/exit.o lib/wait.o lib/exec.o lib/checksum.o
 DASMOUTPUT	= kernel.bin.asm
 
+OBJCOPY = objcopy
+STRIP   = strip
+
+ORANGESKERNEL_DBG = kernel.dbg
+
 # All Phony Targets
 .PHONY : everything final image clean realclean disasm all buildimg
 
@@ -53,7 +60,7 @@ DASMOUTPUT	= kernel.bin.asm
 nop :
 	@echo "why not \`make image' huh? :)"
 
-everything : $(ORANGESBOOT) $(ORANGESKERNEL)
+everything : $(ORANGESBOOT) $(ORANGESKERNEL) $(ORANGESKERNEL_DBG)
 
 all : realclean everything
 
@@ -63,7 +70,8 @@ clean :
 	rm -f $(OBJS) $(LOBJS)
 
 realclean :
-	rm -f $(OBJS) $(LOBJS) $(LIB) $(ORANGESBOOT) $(ORANGESKERNEL)
+	rm -f $(OBJS) $(LOBJS) $(LIB) $(ORANGESBOOT) \
+	      $(ORANGESKERNEL) $(ORANGESKERNEL_DBG) krnl.map
 
 disasm :
 	$(DASM) $(DASMFLAGS) $(ORANGESKERNEL) > $(DASMOUTPUT)
@@ -91,6 +99,12 @@ boot/hdloader.bin : boot/hdloader.asm boot/include/load.inc boot/include/fat12hd
 
 $(ORANGESKERNEL) : $(OBJS) $(LIB)
 	$(LD) $(LDFLAGS) -o $(ORANGESKERNEL) $^
+
+# 将kernel.bin中的调试信息抽离到kernel.dbg，保证文件体积不会变的太大
+$(ORANGESKERNEL_DBG) : $(ORANGESKERNEL)
+	$(OBJCOPY) --only-keep-debug $< $@
+	$(STRIP) --strip-debug $<
+	$(OBJCOPY) --add-gnu-debuglink=$@ $<
 
 $(LIB) : $(LOBJS)
 	$(AR) $(ARFLAGS) $@ $^
