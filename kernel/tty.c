@@ -60,6 +60,16 @@ PRIVATE void	tty_dev_write	(TTY* tty);
 PRIVATE void	tty_do_read	(TTY* tty, MESSAGE* msg);
 PRIVATE void	tty_do_write	(TTY* tty, MESSAGE* msg);
 PRIVATE void	put_key		(TTY* tty, u32 key);
+PRIVATE void	tty_reset_active	(TTY* tty);
+PRIVATE void	tty_set_active_request(TTY* tty, int caller, int proc_nr,
+			void* buf, int count, int transferred, int shell_id);
+PRIVATE void	tty_enqueue_read	(TTY* tty, int caller, int proc_nr,
+			void* buf, int count, int transferred, int shell_id);
+PRIVATE void	tty_activate_from_queue(TTY* tty);
+PRIVATE void	tty_save_active_to_queue(TTY* tty);
+PRIVATE void	tty_cycle_active(TTY* tty);
+PRIVATE void	tty_show_active_shell(TTY* tty, const char *label);
+PRIVATE int	tty_acquire_shell_id(TTY* tty, int proc_nr);
 
 
 /*****************************************************************************
@@ -137,6 +147,15 @@ PRIVATE void init_tty(TTY* tty)
 	tty->ibuf_cnt = 0;
 	tty->ibuf_head = tty->ibuf_tail = tty->ibuf;
 
+	tty_reset_active(tty);
+	tty->pending_head = 0;
+	tty->pending_tail = 0;
+	tty->pending_count = 0;
+	tty->shell_slot_count = 0;
+	tty->next_shell_id = 1;
+	tty->active_shell_id = -1;
+	tty->current_shell_id = -1;
+
 	init_screen(tty);
 }
 
@@ -163,6 +182,14 @@ PUBLIC void in_process(TTY* tty, u32 key)
 			break;
 		case BACKSPACE:
 			put_key(tty, '\b');
+			break;
+		case TAB:
+			if ((key & FLAG_CTRL_L) || (key & FLAG_CTRL_R)) {
+				tty_cycle_active(tty);
+			}
+			else {
+				put_key(tty, '\t');
+			}
 			break;
 		case UP:
 			if ((key & FLAG_SHIFT_L) ||
@@ -280,7 +307,7 @@ PRIVATE void tty_dev_write(TTY* tty)
 				msg.PROC_NR = tty->tty_procnr;
 				msg.CNT = tty->tty_trans_cnt;
 				send_recv(SEND, tty->tty_caller, &msg);
-				tty->tty_left_cnt = 0;
+				tty_reset_active(tty);
 			}
 		}
 	}
@@ -302,17 +329,25 @@ PRIVATE void tty_dev_write(TTY* tty)
  *****************************************************************************/
 PRIVATE void tty_do_read(TTY* tty, MESSAGE* msg)
 {
-	/* tell the tty: */
-	tty->tty_caller   = msg->source;  /* who called, usually FS */
-	tty->tty_procnr   = msg->PROC_NR; /* who wants the chars */
-	tty->tty_req_buf  = va2la(tty->tty_procnr,
-				  msg->BUF);/* where the chars should be put */
-	tty->tty_left_cnt = msg->CNT; /* how many chars are requested */
-	tty->tty_trans_cnt= 0; /* how many chars have been transferred */
+	int caller = msg->source;
+	int proc_nr = msg->PROC_NR;
+	void* req_buf = va2la(proc_nr, msg->BUF);
+	int count = msg->CNT;
+	int shell_id = tty_acquire_shell_id(tty, proc_nr);
+
+	if (tty->tty_req_buf == 0 &&
+	    (tty->current_shell_id < 0 ||
+	     tty->current_shell_id == shell_id)) {
+		tty_set_active_request(tty, caller, proc_nr, req_buf, count, 0, shell_id);
+		tty_show_active_shell(tty, "shell");
+	}
+	else {
+		tty_enqueue_read(tty, caller, proc_nr, req_buf, count, 0, shell_id);
+	}
 
 	msg->type = SUSPEND_PROC;
-	msg->CNT = tty->tty_left_cnt;
-	send_recv(SEND, tty->tty_caller, msg);
+	msg->CNT = count;
+	send_recv(SEND, caller, msg);
 }
 
 
@@ -343,6 +378,117 @@ PRIVATE void tty_do_write(TTY* tty, MESSAGE* msg)
 
 	msg->type = SYSCALL_RET;
 	send_recv(SEND, msg->source, msg);
+}
+
+PRIVATE void tty_reset_active(TTY* tty)
+{
+	tty->tty_caller = NO_TASK;
+	tty->tty_procnr = NO_TASK;
+	tty->tty_req_buf = 0;
+	tty->tty_left_cnt = 0;
+	tty->tty_trans_cnt = 0;
+	tty->active_shell_id = -1;
+}
+
+PRIVATE void tty_set_active_request(TTY* tty, int caller, int proc_nr,
+		      void* buf, int count, int transferred, int shell_id)
+{
+	tty->tty_caller = caller;
+	tty->tty_procnr = proc_nr;
+	tty->tty_req_buf = buf;
+	tty->tty_trans_cnt = transferred;
+	int remaining = count - transferred;
+	if (remaining < 0)
+		remaining = 0;
+	tty->tty_left_cnt = remaining;
+	tty->active_shell_id = shell_id;
+	if (tty->current_shell_id < 0)
+		tty->current_shell_id = shell_id;
+}
+
+PRIVATE void tty_enqueue_read(TTY* tty, int caller, int proc_nr,
+		      void* buf, int count, int transferred, int shell_id)
+{
+	assert(tty->pending_count < TTY_PENDING_READS);
+	TTY_READ_REQ* slot = &tty->pending_reads[tty->pending_tail];
+	slot->caller = caller;
+	slot->proc_nr = proc_nr;
+	slot->req_buf = buf;
+	slot->count = count;
+	slot->transferred = transferred;
+	slot->shell_id = shell_id;
+	tty->pending_tail = (tty->pending_tail + 1) % TTY_PENDING_READS;
+	tty->pending_count++;
+}
+PRIVATE void tty_activate_from_queue(TTY* tty)
+{
+	if (tty->pending_count == 0)
+		return;
+	TTY_READ_REQ* req = &tty->pending_reads[tty->pending_head];
+	tty->pending_head = (tty->pending_head + 1) % TTY_PENDING_READS;
+	tty->pending_count--;
+	tty_set_active_request(tty, req->caller, req->proc_nr,
+		req->req_buf, req->count, req->transferred, req->shell_id);
+	tty->current_shell_id = req->shell_id;
+	tty_show_active_shell(tty, "shell");
+}
+
+PRIVATE void tty_save_active_to_queue(TTY* tty)
+{
+	if (!tty->tty_req_buf)
+		return;
+	int total = tty->tty_trans_cnt + tty->tty_left_cnt;
+	tty_enqueue_read(tty, tty->tty_caller, tty->tty_procnr,
+		     tty->tty_req_buf, total, tty->tty_trans_cnt,
+		     tty->active_shell_id);
+	tty_reset_active(tty);
+}
+
+PRIVATE void tty_cycle_active(TTY* tty)
+{
+	if (tty->pending_count == 0)
+		return;
+	if (tty->tty_req_buf)
+		tty_save_active_to_queue(tty);
+	tty_activate_from_queue(tty);
+}
+
+PRIVATE void tty_show_active_shell(TTY* tty, const char *label)
+{
+	if (!tty->tty_req_buf)
+		return;
+	if (tty->active_shell_id < 0)
+		return;
+	struct proc* p = &proc_table[tty->tty_procnr];
+	int pid = proc2pid(p);
+	char msg[96];
+	if (!label)
+		label = "shell";
+	sprintf(msg, "\n[%s %d pid=%d] $ ", label, tty->active_shell_id, pid);
+	char *s = msg;
+	while (*s)
+		out_char(tty->console, *s++);
+}
+
+PRIVATE int tty_acquire_shell_id(TTY* tty, int proc_nr)
+{
+	int i;
+	for (i = 0; i < tty->shell_slot_count; i++) {
+		if (tty->shell_slots[i].proc_nr == proc_nr)
+			return tty->shell_slots[i].shell_id;
+	}
+	int id = tty->next_shell_id++;
+	if (tty->shell_slot_count < TTY_PENDING_READS) {
+		TTY_SHELL_SLOT* slot = &tty->shell_slots[tty->shell_slot_count++];
+		slot->proc_nr = proc_nr;
+		slot->shell_id = id;
+	}
+	else {
+		int idx = proc_nr % TTY_PENDING_READS;
+		tty->shell_slots[idx].proc_nr = proc_nr;
+		tty->shell_slots[idx].shell_id = id;
+	}
+	return id;
 }
 
 

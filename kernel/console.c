@@ -22,6 +22,9 @@
 
 /* #define __TTY_DEBUG__ */
 
+/* keep the banner like "[TTY #1]" intact when clearing */
+#define CONSOLE_RESERVED_HEADER_LINES 1
+
 /* local routines */
 PRIVATE void	set_cursor(unsigned int position);
 PRIVATE void	set_video_start_addr(u32 addr);
@@ -163,8 +166,13 @@ PUBLIC void console_clear(CONSOLE* con)
 {
 	if (!con)
 		return;
-	clear_screen(con->orig, con->con_size);
-	con->cursor = con->orig;
+	int reserved_lines = min(CONSOLE_RESERVED_HEADER_LINES,
+				   con->con_size / SCR_WIDTH);
+	int start = con->orig + reserved_lines * SCR_WIDTH;
+	int len = con->con_size - reserved_lines * SCR_WIDTH;
+	if (len > 0)
+		clear_screen(start, len);
+	con->cursor = start;
 	con->crtc_start = con->orig;
 	con->is_full = 0;
 	flush(con);

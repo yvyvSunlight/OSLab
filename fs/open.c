@@ -24,11 +24,18 @@
 #include "keyboard.h"
 #include "proto.h"
 
+#define MIN_FILE_SECTS 1
+
 PRIVATE struct inode * create_file(char * path, int flags);
 PRIVATE int alloc_imap_bit(int dev);
-PRIVATE int alloc_smap_bit(int dev, int nr_sects_to_alloc);
-PRIVATE struct inode * new_inode(int dev, int inode_nr, int start_sect);
+PRIVATE void free_imap_bit(int dev, int inode_nr);
+PRIVATE int alloc_smap_bit(int dev, int *nr_sects_to_alloc);
+PRIVATE struct inode * new_inode(int dev, int inode_nr, int start_sect, int nr_sects);
 PRIVATE void new_dir_entry(struct inode * dir_inode, int inode_nr, char * filename);
+PRIVATE int find_free_run(int dev, int smap_blk0_nr, int nr_smap_sects,
+		int nr_sects_to_alloc);
+PRIVATE void mark_smap_bits(int dev, int smap_blk0_nr, int start_bit,
+		int nr_sects_to_alloc);
 
 /*****************************************************************************
  *                                do_open
@@ -173,10 +180,16 @@ PRIVATE struct inode * create_file(char * path, int flags)
 		return 0;
 
 	int inode_nr = alloc_imap_bit(dir_inode->i_dev);
-	int free_sect_nr = alloc_smap_bit(dir_inode->i_dev,
-					  NR_DEFAULT_FILE_SECTS);
+	int nr_sects = NR_DEFAULT_FILE_SECTS;
+	int free_sect_nr = alloc_smap_bit(dir_inode->i_dev, &nr_sects);
+	if (!free_sect_nr) {
+		printl("{FS} insufficient space for %s\n", path);
+		/* roll back inode allocation */
+		free_imap_bit(dir_inode->i_dev, inode_nr);
+		return 0;
+	}
 	struct inode *newino = new_inode(dir_inode->i_dev, inode_nr,
-					 free_sect_nr);
+					 free_sect_nr, nr_sects);
 
 	new_dir_entry(dir_inode, newino->i_num, filename);
 
@@ -285,6 +298,23 @@ PRIVATE int alloc_imap_bit(int dev)
 	return 0;
 }
 
+PRIVATE void free_imap_bit(int dev, int inode_nr)
+{
+	int imap_blk0_nr = 1 + 1;
+	struct super_block * sb = get_super_block(dev);
+	int byte_idx = inode_nr / 8;
+	int bit_idx = inode_nr % 8;
+	int sect = imap_blk0_nr + byte_idx / SECTOR_SIZE;
+
+	if (byte_idx / SECTOR_SIZE >= sb->nr_imap_sects)
+		panic("free_imap_bit: invalid inode\n");
+
+	RD_SECT(dev, sect);
+	assert(fsbuf[byte_idx % SECTOR_SIZE] & (1 << bit_idx));
+	fsbuf[byte_idx % SECTOR_SIZE] &= ~(1 << bit_idx);
+	WR_SECT(dev, sect);
+}
+
 /*****************************************************************************
  *                                alloc_smap_bit
  *****************************************************************************/
@@ -296,52 +326,31 @@ PRIVATE int alloc_imap_bit(int dev)
  * 
  * @return  The 1st sector nr allocated.
  *****************************************************************************/
-PRIVATE int alloc_smap_bit(int dev, int nr_sects_to_alloc)
+PRIVATE int alloc_smap_bit(int dev, int *nr_sects_to_alloc)
 {
-	/* int nr_sects_to_alloc = NR_DEFAULT_FILE_SECTS; */
-
-	int i; /* sector index */
-	int j; /* byte index */
-	int k; /* bit index */
-
 	struct super_block * sb = get_super_block(dev);
-
 	int smap_blk0_nr = 1 + 1 + sb->nr_imap_sects;
-	int free_sect_nr = 0;
+	int attempt = *nr_sects_to_alloc;
+	int desired = attempt;
 
-	for (i = 0; i < sb->nr_smap_sects; i++) { /* smap_blk0_nr + i :
-						     current sect nr. */
-		RD_SECT(dev, smap_blk0_nr + i);
+	if (attempt < MIN_FILE_SECTS)
+		attempt = MIN_FILE_SECTS;
 
-		/* byte offset in current sect */
-		for (j = 0; j < SECTOR_SIZE && nr_sects_to_alloc > 0; j++) {
-			k = 0;
-			if (!free_sect_nr) {
-				/* loop until a free bit is found */
-				if (fsbuf[j] == 0xFF) continue;
-				for (; ((fsbuf[j] >> k) & 1) != 0; k++) {}
-				free_sect_nr = (i * SECTOR_SIZE + j) * 8 +
-					k - 1 + sb->n_1st_sect;
-			}
-
-			for (; k < 8; k++) { /* repeat till enough bits are set */
-				assert(((fsbuf[j] >> k) & 1) == 0);
-				fsbuf[j] |= (1 << k);
-				if (--nr_sects_to_alloc == 0)
-					break;
-			}
+	while (attempt >= MIN_FILE_SECTS) {
+		int run_start_bit = find_free_run(dev, smap_blk0_nr,
+					      sb->nr_smap_sects, attempt);
+		if (run_start_bit > 0) {
+			mark_smap_bits(dev, smap_blk0_nr, run_start_bit, attempt);
+			*nr_sects_to_alloc = attempt;
+			if (attempt != desired)
+				printl("{FS} alloc_smap_bit: fallback to %d sectors\n",
+				       attempt);
+			return (run_start_bit - 1) + sb->n_1st_sect;
 		}
-
-		if (free_sect_nr) /* free bit found, write the bits to smap */
-			WR_SECT(dev, smap_blk0_nr + i);
-
-		if (nr_sects_to_alloc == 0)
-			break;
+		attempt >>= 1;
 	}
 
-	assert(nr_sects_to_alloc == 0);
-
-	return free_sect_nr;
+	return 0;
 }
 
 /*****************************************************************************
@@ -356,15 +365,14 @@ PRIVATE int alloc_smap_bit(int dev, int nr_sects_to_alloc)
  * 
  * @return  Ptr of the new i-node.
  *****************************************************************************/
-PRIVATE struct inode * new_inode(int dev, int inode_nr, int start_sect)
+PRIVATE struct inode * new_inode(int dev, int inode_nr, int start_sect, int nr_sects)
 {
 	struct inode * new_inode = get_inode(dev, inode_nr);
 
 	new_inode->i_mode = I_REGULAR;
 	new_inode->i_size = 0;
 	new_inode->i_start_sect = start_sect;
-	new_inode->i_nr_sects = NR_DEFAULT_FILE_SECTS;
-	new_inode->check_sum = 0;
+	new_inode->i_nr_sects = nr_sects;
 
 	new_inode->i_dev = dev;
 	new_inode->i_cnt = 1;
@@ -374,6 +382,70 @@ PRIVATE struct inode * new_inode(int dev, int inode_nr, int start_sect)
 	sync_inode(new_inode);
 
 	return new_inode;
+}
+
+PRIVATE int find_free_run(int dev, int smap_blk0_nr, int nr_smap_sects,
+		int nr_sects_to_alloc)
+{
+	int run_start_bit = 0;
+	int run_len = 0;
+	int i;
+	int j;
+	int k;
+
+	for (i = 0; i < nr_smap_sects; i++) {
+		RD_SECT(dev, smap_blk0_nr + i);
+		for (j = 0; j < SECTOR_SIZE; j++) {
+			u8 byte = fsbuf[j];
+			if (byte == 0xFF) {
+				run_len = 0;
+				run_start_bit = 0;
+				continue;
+			}
+			for (k = 0; k < 8; k++) {
+				if ((byte >> k) & 1) {
+					run_len = 0;
+					run_start_bit = 0;
+					continue;
+				}
+				if (run_len == 0) {
+					int absolute_bit = (i * SECTOR_SIZE + j) * 8 + k;
+					run_start_bit = absolute_bit + 1;
+				}
+				run_len++;
+				if (run_len == nr_sects_to_alloc)
+					return run_start_bit;
+			}
+		}
+	}
+
+	return 0;
+}
+
+PRIVATE void mark_smap_bits(int dev, int smap_blk0_nr, int start_bit,
+		int nr_sects_to_alloc)
+{
+	int bits_to_mark = nr_sects_to_alloc;
+	int current_bit = start_bit - 1;
+	while (bits_to_mark > 0) {
+		int sect_offset = current_bit / (SECTOR_SIZE * 8);
+		int bit_in_sect = current_bit % (SECTOR_SIZE * 8);
+		int byte_idx = bit_in_sect / 8;
+		int bit_idx = bit_in_sect % 8;
+
+		RD_SECT(dev, smap_blk0_nr + sect_offset);
+		for (; byte_idx < SECTOR_SIZE && bits_to_mark > 0; byte_idx++) {
+			while (bit_idx < 8 && bits_to_mark > 0) {
+				assert(((fsbuf[byte_idx] >> bit_idx) & 1) == 0);
+				fsbuf[byte_idx] |= (1 << bit_idx);
+				current_bit++;
+				bits_to_mark--;
+				bit_idx++;
+			}
+			bit_idx = 0;
+		}
+		WR_SECT(dev, smap_blk0_nr + sect_offset);
+	}
 }
 
 /*****************************************************************************

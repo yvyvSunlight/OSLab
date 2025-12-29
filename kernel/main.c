@@ -17,6 +17,8 @@
 #include "global.h"
 #include "proto.h"
 
+#define SHELLS_PER_TTY 2
+
 
 /*****************************************************************************
  *                               kernel_main
@@ -326,7 +328,6 @@ void shabby_shell(const char * tty_name)
 	char rdbuf[128];
 
 	while (1) {
-		write(1, "$ ", 2);
 		int r = read(0, rdbuf, 70);
 		
 		if (r <= 0)  continue;
@@ -420,21 +421,27 @@ void Init()
 			
 
 	char * tty_list[] = {"/dev_tty1", "/dev_tty2"};
+	const int shell_slots = SHELLS_PER_TTY;
 
 	int i;
 	for (i = 0; i < sizeof(tty_list) / sizeof(tty_list[0]); i++) {
-		int pid = fork();
-		if (pid != 0) { /* parent process */
-			printf("[parent is running, child pid:%d]\n", pid);
-		}
-		else {	/* child process */
-			printf("[child is running, pid:%d]\n", getpid());
-			// 关闭占用的输入输出，在shabby_shell内部重新绑定
-			close(fd_stdin);
-			close(fd_stdout);
-			
-			shabby_shell(tty_list[i]);
-			assert(0);
+		int shell_idx;
+		for (shell_idx = 0; shell_idx < shell_slots; shell_idx++) {
+			int pid = fork();
+			if (pid != 0) { /* parent process */
+				printf("[parent spawned shell %d on %s, child pid:%d]\n",
+					shell_idx, tty_list[i], pid);
+			}
+			else { /* child process */
+				printf("[child is running, pid:%d, tty:%s slot:%d]\n",
+					getpid(), tty_list[i], shell_idx);
+				// 关闭占用的输入输出，在shabby_shell内部重新绑定
+				close(fd_stdin);
+				close(fd_stdout);
+				
+				shabby_shell(tty_list[i]);
+				assert(0);
+			}
 		}
 	}
 

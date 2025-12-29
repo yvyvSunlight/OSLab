@@ -6,9 +6,9 @@
             "type": "cppdbg",
             "request": "launch",
             "MIMode": "gdb",
-            "program": "F:/ShareFiles/OSLab/kernel.bin",
+            "program": "D:/Code/os_lab/OSLab/kernel.bin",
             "cwd": "${workspaceFolder}",
-            "miDebuggerServerAddress": "192.168.56.149:1234",
+            "miDebuggerServerAddress": "192.168.59.142:1234",
             "targetArchitecture": "x86",
             "stopAtEntry": false,
             "setupCommands": [
@@ -19,7 +19,7 @@
                     "text": "set architecture i386"
                 },
                 {
-                    "text": "symbol-file F:/ShareFiles/OSLab/kernel.dbg"
+                    "text": "symbol-file D:/Code/os_lab/OSLab/kernel.dbg"
                 }
             ],
             "logging": {

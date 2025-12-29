@@ -107,15 +107,27 @@ PUBLIC int do_unlink()
 	 *      byte_idx: byte idx in the entire i-map
 	 */
 	bit_idx  = pin->i_start_sect - sb->n_1st_sect + 1;
+	if (bit_idx <= 0)
+		panic("invalid bit_idx when unlinking\n");
 	byte_idx = bit_idx / 8;
-	int bits_left = pin->i_nr_sects;
-	int byte_cnt = (bits_left - (8 - (bit_idx % 8))) / 8;
 
 	/* current sector nr. */
 	int s = 2  /* 2: bootsect + superblk */
 		+ sb->nr_imap_sects + byte_idx / SECTOR_SIZE;
 
 	RD_SECT(pin->i_dev, s);
+	if (!((fsbuf[byte_idx % SECTOR_SIZE] >> (bit_idx % 8)) & 1)) {
+		if (bit_idx == 0)
+			panic("smap bit mismatch\n");
+		bit_idx--;
+		byte_idx = bit_idx / 8;
+		s = 2 + sb->nr_imap_sects + byte_idx / SECTOR_SIZE;
+		RD_SECT(pin->i_dev, s);
+		assert((fsbuf[byte_idx % SECTOR_SIZE] >> (bit_idx % 8)) & 1);
+	}
+
+	int bits_left = pin->i_nr_sects;
+	int byte_cnt = (bits_left - (8 - (bit_idx % 8))) / 8;
 
 	int i;
 	/* clear the first byte */
