@@ -94,71 +94,48 @@ PUBLIC int do_unlink()
 	/**************************/
 	/* free the bits in s-map */
 	/**************************/
-	/*
-	 *           bit_idx: bit idx in the entire i-map
-	 *     ... ____|____
-	 *                  \        .-- byte_cnt: how many bytes between
-	 *                   \      |              the first and last byte
-	 *        +-+-+-+-+-+-+-+-+ V +-+-+-+-+-+-+-+-+
-	 *    ... | | | | | |*|*|*|...|*|*|*|*| | | | |
-	 *        +-+-+-+-+-+-+-+-+   +-+-+-+-+-+-+-+-+
-	 *         0 1 2 3 4 5 6 7     0 1 2 3 4 5 6 7
-	 *  ...__/
-	 *      byte_idx: byte idx in the entire i-map
-	 */
-	bit_idx  = pin->i_start_sect - sb->n_1st_sect + 1;
-	if (bit_idx <= 0)
-		panic("invalid bit_idx when unlinking\n");
-	byte_idx = bit_idx / 8;
+	int smap_blk0_nr = 2 + sb->nr_imap_sects;
+	int start_bit = pin->i_start_sect - sb->n_1st_sect;
+	int bits_to_free = pin->i_nr_sects;
 
-	/* current sector nr. */
-	int s = 2  /* 2: bootsect + superblk */
-		+ sb->nr_imap_sects + byte_idx / SECTOR_SIZE;
+	if (start_bit < 0 || bits_to_free <= 0)
+		panic("invalid smap release request\n");
 
-	RD_SECT(pin->i_dev, s);
-	if (!((fsbuf[byte_idx % SECTOR_SIZE] >> (bit_idx % 8)) & 1)) {
-		if (bit_idx == 0)
-			panic("smap bit mismatch\n");
-		bit_idx--;
-		byte_idx = bit_idx / 8;
-		s = 2 + sb->nr_imap_sects + byte_idx / SECTOR_SIZE;
-		RD_SECT(pin->i_dev, s);
-		assert((fsbuf[byte_idx % SECTOR_SIZE] >> (bit_idx % 8)) & 1);
-	}
+	while (bits_to_free > 0) {
+		int sect_offset = start_bit / (SECTOR_SIZE * 8);
+		int bit_in_sect = start_bit % (SECTOR_SIZE * 8);
+		int bits_in_sector = min(bits_to_free, (SECTOR_SIZE * 8) - bit_in_sect);
+		int byte_idx_smap = bit_in_sect / 8;
+		int bit_idx_smap = bit_in_sect % 8;
+		int remaining = bits_in_sector;
 
-	int bits_left = pin->i_nr_sects;
-	int byte_cnt = (bits_left - (8 - (bit_idx % 8))) / 8;
+		RD_SECT(pin->i_dev, smap_blk0_nr + sect_offset);
 
-	int i;
-	/* clear the first byte */
-	for (i = bit_idx % 8; (i < 8) && bits_left; i++,bits_left--) {
-		assert((fsbuf[byte_idx % SECTOR_SIZE] >> i & 1) == 1);
-		fsbuf[byte_idx % SECTOR_SIZE] &= ~(1 << i);
-	}
+		while (remaining > 0) {
+			if (byte_idx_smap >= SECTOR_SIZE) {
+				WR_SECT(pin->i_dev, smap_blk0_nr + sect_offset);
+				sect_offset++;
+				byte_idx_smap = 0;
+				bit_idx_smap = 0;
+				RD_SECT(pin->i_dev, smap_blk0_nr + sect_offset);
+			}
 
-	/* clear bytes from the second byte to the second to last */
-	int k;
-	i = (byte_idx % SECTOR_SIZE) + 1;	/* the second byte */
-	for (k = 0; k < byte_cnt; k++,i++,bits_left-=8) {
-		if (i == SECTOR_SIZE) {
-			i = 0;
-			WR_SECT(pin->i_dev, s);
-			RD_SECT(pin->i_dev, ++s);
+			if ((fsbuf[byte_idx_smap] >> bit_idx_smap) & 1)
+				fsbuf[byte_idx_smap] &= ~(1 << bit_idx_smap);
+
+			bit_idx_smap++;
+			if (bit_idx_smap == 8) {
+				bit_idx_smap = 0;
+				byte_idx_smap++;
+			}
+
+			start_bit++;
+			bits_to_free--;
+			remaining--;
 		}
-		assert(fsbuf[i] == 0xFF);
-		fsbuf[i] = 0;
-	}
 
-	/* clear the last byte */
-	if (i == SECTOR_SIZE) {
-		i = 0;
-		WR_SECT(pin->i_dev, s);
-		RD_SECT(pin->i_dev, ++s);
+		WR_SECT(pin->i_dev, smap_blk0_nr + sect_offset);
 	}
-	unsigned char mask = ~((unsigned char)(~0) << bits_left);
-	assert((fsbuf[i] & mask) == mask);
-	fsbuf[i] &= (~0) << bits_left;
-	WR_SECT(pin->i_dev, s);
 
 	/***************************/
 	/* clear the i-node itself */
@@ -186,6 +163,7 @@ PUBLIC int do_unlink()
 	struct dir_entry * pde = 0;
 	int flg = 0;
 	int dir_size = 0;
+	int i;
 
 	for (i = 0; i < nr_dir_blks; i++) {
 		RD_SECT(dir_inode->i_dev, dir_blk0_nr + i);
