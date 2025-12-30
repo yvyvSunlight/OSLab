@@ -14,7 +14,7 @@ void ret2lib() {
 
     addr=&buff[72];
 
-    addr[0] = 0xdeadbeef;  // ebp
+    addr[0] = 0xdeadbeef;  // ebp - 4
     addr[1] = 0xdeadbeef;  // ebp
     addr[2] = (int)printf; // return address
     addr[3] = (int)exit; // return address for printf
