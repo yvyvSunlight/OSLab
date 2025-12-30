@@ -3,3 +3,10 @@ config/
 
 # 忽略VSCode的调试配置文件 不影响各自的vscode设置
 .vscode/
+
+# build artifacts
+*.img
+*.bin
+*.dbg
+*.map
+lib/orangescrt.a
