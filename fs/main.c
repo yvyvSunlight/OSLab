@@ -91,6 +91,7 @@ PUBLIC void task_fs()
 			assert(0);
 			break;
 		}
+		log_fs_event(msgtype, src, -1);
 
 #ifdef ENABLE_DISK_LOG
 		char * msg_name[128];
