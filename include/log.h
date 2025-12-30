@@ -25,8 +25,16 @@
 #define O_RDWR   0
 #endif
 
-//mm
+/* mm */
 void log_mm_enable(int enable);
 void log_mm_event(int msgtype, int src, int val);
+void log_mm_flush(void);
+void log_mm_close(void);
 
+/* sys */
+void log_sys_enable(int enable);
+void log_sys_event(int msgtype, int src, int val);
+
+void log_sys_flush(void);
+void log_sys_close(void);
 #endif
