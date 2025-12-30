@@ -70,6 +70,8 @@ PRIVATE void	tty_save_active_to_queue(TTY* tty);
 PRIVATE void	tty_cycle_active(TTY* tty);
 PRIVATE void	tty_show_active_shell(TTY* tty, const char *label);
 PRIVATE int	tty_acquire_shell_id(TTY* tty, int proc_nr);
+PRIVATE int	tty_lookup_shell_slot(const TTY* tty, int proc_nr);
+PRIVATE void	tty_store_shell_slot(TTY* tty, int proc_nr, int shell_id);
 
 
 /*****************************************************************************
@@ -472,23 +474,49 @@ PRIVATE void tty_show_active_shell(TTY* tty, const char *label)
 
 PRIVATE int tty_acquire_shell_id(TTY* tty, int proc_nr)
 {
+	int shell_id = tty_lookup_shell_slot(tty, proc_nr);
+	if (shell_id >= 0)
+		return shell_id;
+
+	int ancestor = proc_nr;
+	while (ancestor >= 0 && ancestor < NR_TASKS + NR_PROCS) {
+		ancestor = proc_table[ancestor].p_parent;
+		if (ancestor < 0)
+			break;
+		shell_id = tty_lookup_shell_slot(tty, ancestor);
+		if (shell_id >= 0) {
+			tty_store_shell_slot(tty, proc_nr, shell_id);
+			return shell_id;
+		}
+	}
+
+	shell_id = tty->next_shell_id++;
+	tty_store_shell_slot(tty, proc_nr, shell_id);
+	return shell_id;
+}
+
+PRIVATE int tty_lookup_shell_slot(const TTY* tty, int proc_nr)
+{
 	int i;
 	for (i = 0; i < tty->shell_slot_count; i++) {
 		if (tty->shell_slots[i].proc_nr == proc_nr)
 			return tty->shell_slots[i].shell_id;
 	}
-	int id = tty->next_shell_id++;
+	return -1;
+}
+
+PRIVATE void tty_store_shell_slot(TTY* tty, int proc_nr, int shell_id)
+{
 	if (tty->shell_slot_count < TTY_PENDING_READS) {
 		TTY_SHELL_SLOT* slot = &tty->shell_slots[tty->shell_slot_count++];
 		slot->proc_nr = proc_nr;
-		slot->shell_id = id;
+		slot->shell_id = shell_id;
 	}
 	else {
 		int idx = proc_nr % TTY_PENDING_READS;
 		tty->shell_slots[idx].proc_nr = proc_nr;
-		tty->shell_slots[idx].shell_id = id;
+		tty->shell_slots[idx].shell_id = shell_id;
 	}
-	return id;
 }
 
 

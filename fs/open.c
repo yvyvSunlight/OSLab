@@ -255,6 +255,48 @@ PUBLIC int do_lseek()
 }
 
 /*****************************************************************************
+ *                                do_truncate
+ *****************************************************************************/
+/**
+ * Adjust file size to the specified length.
+ *
+ * @return 0 on success, -1 otherwise.
+ */
+PUBLIC int do_truncate()
+{
+	int fd = fs_msg.FD;
+	int length = fs_msg.CNT;
+	struct file_desc *pfd;
+	struct inode *pin;
+	int max_len;
+
+	if (fd < 0 || fd >= NR_FILES)
+		return -1;
+
+	pfd = pcaller->filp[fd];
+	if (!pfd)
+		return -1;
+
+	pin = pfd->fd_inode;
+	if (!pin)
+		return -1;
+
+	if (length < 0)
+		return -1;
+
+	max_len = pin->i_nr_sects * SECTOR_SIZE;
+	if (length > max_len)
+		length = max_len;
+
+	pin->i_size = length;
+	if (pfd->fd_pos > length)
+		pfd->fd_pos = length;
+
+	sync_inode(pin);
+	return 0;
+}
+
+/*****************************************************************************
  *                                alloc_imap_bit
  *****************************************************************************/
 /**

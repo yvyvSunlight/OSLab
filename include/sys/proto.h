@@ -84,6 +84,7 @@ PUBLIC struct super_block *	get_super_block(int dev);
 PUBLIC int		do_open();
 PUBLIC int		do_close();
 PUBLIC int		do_lseek();
+PUBLIC int		do_truncate();
 
 /* fs/read_write.c */
 PUBLIC int		do_rdwt();
