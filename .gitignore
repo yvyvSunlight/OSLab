@@ -27,3 +27,7 @@ command/pwd
 command/rm
 command/touch
 command/ret2text
+command/ret2lib
+command/ret2shellcode
+command/cat
+command/pstackof
