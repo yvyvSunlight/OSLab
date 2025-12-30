@@ -12,7 +12,7 @@ CFLAGS		= -I ../include/ -I ../include/sys/ -c -fno-builtin -fno-stack-protector
 LDFLAGS		= -Ttext 0x1000
 DASMFLAGS	= -D
 LIB		= ../lib/orangescrt.a
-BIN		= echo pwd ls kill touch edit rm ps clear ret2text
+BIN		= echo pwd ls kill touch edit rm ps clear ret2text ret2shellcode
 
 # All Phony Targets
 .PHONY : everything final clean realclean disasm all install
@@ -100,4 +100,10 @@ ret2text.o: ret2text.c ../include/stdio.h
 	$(CC) $(CFLAGS) -o $@ $<
 
 ret2text : ret2text.o start.o $(LIB)
+	$(LD) $(LDFLAGS) -o $@ $?
+
+ret2shellcode.o: ../poc/ret2shellcode.c ../include/stdio.h
+	$(CC) $(CFLAGS) -o $@ $<
+
+ret2shellcode : ret2shellcode.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
