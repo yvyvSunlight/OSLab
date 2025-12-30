@@ -31,13 +31,15 @@ PUBLIC int kernel_main()
 	disp_str("\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
 
 	int i, j, eflags, prio;
-        u8  rpl;
-        u8  priv; /* privilege */
+    u8  rpl;
+    u8  priv; /* privilege */
 
 	struct task * t;
 	struct proc * p = proc_table;
 
 	char * stk = task_stack + STACK_SIZE_TOTAL;
+
+	#define TASK_LOG_INDEX 5 
 
 	for (i = 0; i < NR_TASKS + NR_PROCS; i++,p++,t++) {
 		if (i >= NR_TASKS + NR_NATIVE_PROCS) {
@@ -45,20 +47,26 @@ PUBLIC int kernel_main()
 			continue;
 		}
 
-	        if (i < NR_TASKS) {     /* TASK */
-                        t	= task_table + i;
-                        priv	= PRIVILEGE_TASK;
-                        rpl     = RPL_TASK;
-                        eflags  = 0x1202;/* IF=1, IOPL=1, bit 2 is always 1 */
-			prio    = 15;
-                }
-                else {                  /* USER PROC */
-                        t	= user_proc_table + (i - NR_TASKS);
-                        priv	= PRIVILEGE_USER;
-                        rpl     = RPL_USER;
-                        eflags  = 0x202;	/* IF=1, bit 2 is always 1 */
-			prio    = 5;
-                }
+        if (i < NR_TASKS) {     /* TASK - 内核任务 */
+                t	= task_table + i;
+                priv	= PRIVILEGE_TASK;
+                rpl     = RPL_TASK;
+                eflags  = 0x1202;/* IF=1, IOPL=1, bit 2 is always 1 */
+				
+				// LOG 任务设置最低优先级
+				if (i == TASK_LOG_INDEX) {
+					prio = 1;
+				} else {
+					prio = 15;
+				}
+        }
+        else {                  /* USER PROC - 用户进程 */
+                t	= user_proc_table + (i - NR_TASKS);
+                priv	= PRIVILEGE_USER;
+                rpl     = RPL_USER;
+                eflags  = 0x202;	/* IF=1, bit 2 is always 1 */
+				prio    = 5;  // 用户进程保持中优先级
+        }
 
 		strcpy(p->name, t->name);	/* name of the process */
 		p->p_parent = NO_TASK;
@@ -103,6 +111,7 @@ PUBLIC int kernel_main()
 		p->regs.esp	= (u32)stk;
 		p->regs.eflags	= eflags;
 
+		// ========== 关键改动2：确认优先级赋值（原有逻辑保留，已通过上面的 prio 变量修改） ==========
 		p->ticks = p->priority = prio;
 		p->queue_level = 0;
 
@@ -126,7 +135,7 @@ PUBLIC int kernel_main()
 	p_proc_ready	= proc_table;
 
 	init_clock();
-        init_keyboard();
+    init_keyboard();
 
 	restart();
 
