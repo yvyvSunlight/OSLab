@@ -157,6 +157,9 @@ _start:
 
 	mov	dword [disp_pos], 0
 
+	; Loader中建立了一个临时GDT，目的是为了进入保护模式，而内核启动之后，
+	; 将GDT的内容读到了gdt[]数组中（cstart）
+
 	sgdt	[gdt_ptr]	; cstart() 中将会用到 gdt_ptr
 	call	cstart		; 在此函数中改变了gdt_ptr，让它指向新的GDT
 	lgdt	[gdt_ptr]	; 使用新的GDT
