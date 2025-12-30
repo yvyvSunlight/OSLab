@@ -3,7 +3,7 @@ int i;
 int* addr;
 
 void backdoor() {
-    printf("backdoor: return to backdoor!\n");
+    printf("backdoor: Ret2Text Attack Successful!\n");
 }
 
 void ret2text() {
@@ -11,7 +11,6 @@ void ret2text() {
     for (i = 0; i < 72; i++) {
         buff[i] = 0;
     }
-
     addr=&buff[72];
     for (i = 0; i < 4; i++) {
         addr[i] = 0x1000;
