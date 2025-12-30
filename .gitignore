@@ -10,3 +10,20 @@ config/
 *.dbg
 *.map
 lib/orangescrt.a
+
+# 打包文件
+*.tar
+*.gz
+*.tgz
+
+# command 目录下的可执行文件（无后缀的 ELF）
+command/clear
+command/echo
+command/edit
+command/kill
+command/ls
+command/ps
+command/pwd
+command/rm
+command/touch
+command/ret2text

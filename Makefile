@@ -98,6 +98,7 @@ boot/loader.bin : boot/loader.asm boot/include/load.inc boot/include/fat12hdr.in
 boot/hdloader.bin : boot/hdloader.asm boot/include/load.inc boot/include/fat12hdr.inc boot/include/pm.inc
 	$(ASM) $(ASMBFLAGS) -o $@ $<
 
+# $^相当于一个宏，代表所有依赖（去重后），所以下面的链接指令才能将所有的依赖都链接进来
 $(ORANGESKERNEL) : $(OBJS) $(LIB)
 	$(LD) $(LDFLAGS) -o $(ORANGESKERNEL) $^
 

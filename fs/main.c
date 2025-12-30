@@ -169,6 +169,8 @@ PRIVATE void init_fs()
 	assert(dd_map[MAJOR(ROOT_DEV)].driver_nr != INVALID_DRIVER);
 	send_recv(BOTH, dd_map[MAJOR(ROOT_DEV)].driver_nr, &driver_msg);
 
+	// printl("\nMAJOR(ROOT_DEV) = %d, MINOR(ROOT_DEV) = %d, dd_map[MAJOR(ROOT_DEV)].driver_nr = %d\n", MAJOR(ROOT_DEV), MINOR(ROOT_DEV), dd_map[MAJOR(ROOT_DEV)].driver_nr);
+
 	/* read the super block of ROOT DEVICE */
 	RD_SECT(ROOT_DEV, 1);
 
