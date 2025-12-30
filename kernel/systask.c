@@ -19,17 +19,11 @@
 #include "global.h"
 #include "keyboard.h"
 #include "proto.h"
+#include "log.h"
 
 PRIVATE int read_register(char reg_addr);
 PRIVATE u32 get_rtc_time(struct time *t);
 
-/*****************************************************************************
- *                                task_sys
- *****************************************************************************/
-/**
- * <Ring 1> The main loop of TASK SYS.
- * 
- *****************************************************************************/
 PUBLIC void task_sys()
 {
 	MESSAGE msg;
@@ -43,11 +37,13 @@ PUBLIC void task_sys()
 		case GET_TICKS:
 			msg.RETVAL = ticks;
 			send_recv(SEND, src, &msg);
+			log_sys_event(GET_TICKS, src, ticks);
 			break;
 		case GET_PID:
 			msg.type = SYSCALL_RET;
 			msg.PID = src;
 			send_recv(SEND, src, &msg);
+			log_sys_event(GET_PID, src, src);
 			break;
 		case GET_RTC_TIME:
 			msg.type = SYSCALL_RET;
@@ -56,6 +52,7 @@ PUBLIC void task_sys()
 				  va2la(TASK_SYS, &t),
 				  sizeof(t));
 			send_recv(SEND, src, &msg);
+			log_sys_event(GET_RTC_TIME, src, -1);
 			break;
 		case GET_PROCS:
 		{
@@ -91,6 +88,7 @@ PUBLIC void task_sys()
 			msg.type = SYSCALL_RET;
 			msg.RETVAL = count;
 			send_recv(SEND, src, &msg);
+			log_sys_event(GET_PROCS, src, count);
 			break;
 		}
 		case CLEAR_SCREEN:
@@ -98,6 +96,7 @@ PUBLIC void task_sys()
 			msg.type = SYSCALL_RET;
 			msg.RETVAL = 0;
 			send_recv(SEND, src, &msg);
+			log_sys_event(CLEAR_SCREEN, src, current_console);
 			break;
 		default:
 			panic("unknown msg type");
@@ -106,15 +105,6 @@ PUBLIC void task_sys()
 	}
 }
 
-
-/*****************************************************************************
- *                                get_rtc_time
- *****************************************************************************/
-/**
- * Get RTC time from the CMOS
- * 
- * @return Zero.
- *****************************************************************************/
 PRIVATE u32 get_rtc_time(struct time *t)
 {
 	t->year = read_register(YEAR);
@@ -125,7 +115,6 @@ PRIVATE u32 get_rtc_time(struct time *t)
 	t->second = read_register(SECOND);
 
 	if ((read_register(CLK_STATUS) & 0x04) == 0) {
-		/* Convert BCD to binary (default RTC mode) */
 		t->year = BCD_TO_DEC(t->year);
 		t->month = BCD_TO_DEC(t->month);
 		t->day = BCD_TO_DEC(t->day);
@@ -135,23 +124,11 @@ PRIVATE u32 get_rtc_time(struct time *t)
 	}
 
 	t->year += 2000;
-
 	return 0;
 }
 
-/*****************************************************************************
- *                                read_register
- *****************************************************************************/
-/**
- * Read register from CMOS.
- * 
- * @param reg_addr 
- * 
- * @return 
- *****************************************************************************/
 PRIVATE int read_register(char reg_addr)
 {
 	out_byte(CLK_ELE, reg_addr);
 	return in_byte(CLK_IO);
 }
-

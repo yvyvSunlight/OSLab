@@ -12,6 +12,7 @@ global	memcpy
 global	memset
 global  strcpy
 global  strlen
+global  strchr
 
 
 ; ------------------------------------------------------------------------
@@ -135,6 +136,39 @@ strlen:
 .2:
         pop     ebp
         ret                             ; 函数结束，返回
+; ------------------------------------------------------------------------
+
+
+; ------------------------------------------------------------------------
+; char* strchr(const char* str, int ch);
+; ------------------------------------------------------------------------
+strchr:
+	push    ebp
+	mov     ebp, esp
+
+	mov     esi, [ebp + 8]      ; str
+	mov     edx, [ebp + 12]     ; ch
+	and     edx, 0FFh
+
+.s_loop:
+	mov     al, [esi]
+	cmp     al, dl
+	je      .found
+	cmp     al, 0
+	je      .not_found
+	inc     esi
+	jmp     .s_loop
+
+.found:
+	mov     eax, esi
+	jmp     .done
+
+.not_found:
+	mov     eax, 0
+
+.done:
+	pop     ebp
+	ret
 ; ------------------------------------------------------------------------
 
 

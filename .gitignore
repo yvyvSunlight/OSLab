@@ -10,3 +10,4 @@ config/
 *.dbg
 *.map
 lib/orangescrt.a
+command/inst.tar

@@ -11,6 +11,11 @@ PUBLIC	int	strlen(const char* p_str);
 PUBLIC	int	memcmp(const void * s1, const void *s2, int n);
 PUBLIC	int	strcmp(const char * s1, const char *s2);
 PUBLIC	char*	strcat(char * s1, const char *s2);
+PUBLIC	char*	strchr(const char * str, int ch);
+
+#ifndef NULL
+#define NULL ((void*)0)
+#endif
 
 /**
  * `phys_copy' and `phys_set' are used only in the kernel, where segments
