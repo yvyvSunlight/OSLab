@@ -20,6 +20,7 @@
 #include "global.h"
 #include "keyboard.h"
 #include "proto.h"
+#include "log.h"
 
 PUBLIC void do_fork_test();
 
@@ -46,20 +47,25 @@ PUBLIC void task_mm()
 		switch (msgtype) {
 		case FORK:
 			mm_msg.RETVAL = do_fork();
+			log_mm_event(FORK, src, mm_msg.RETVAL);
 			break;
 		case EXIT:
+			log_mm_event(EXIT, src, mm_msg.STATUS);
 			do_exit(mm_msg.STATUS);
 			reply = 0;
 			break;
 		case EXEC:
 			mm_msg.RETVAL = do_exec();
+			log_mm_event(EXEC, src, mm_msg.RETVAL);
 			break;
 		case WAIT:
+			log_mm_event(WAIT, src, -1); 
 			do_wait();
 			reply = 0;
 			break;
 		case KILL:
 			mm_msg.RETVAL = do_kill();
+			log_mm_event(KILL, src, mm_msg.RETVAL);
 			break;
 		default:
 			dump_msg("MM::unknown msg", &mm_msg);

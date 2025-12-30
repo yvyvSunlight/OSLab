@@ -1,0 +1,32 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Bochs (GDB Remote) - Kernel",
+            "type": "cppdbg",
+            "request": "launch",
+            "MIMode": "gdb",
+            "program": "E:/Vmware/Share/Ubuntu16.04-share/OSLab/kernel.bin",
+            "cwd": "${workspaceFolder}",
+            "miDebuggerServerAddress": "localhost:8888",
+            "targetArchitecture": "x86",
+            "stopAtEntry": true,
+            "setupCommands": [
+                {
+                    "text": "-enable-pretty-printing"
+                },
+                {
+                    "text": "set architecture i386"
+                },
+                {
+                    "text": "symbol-file E:/Vmware/Share/Ubuntu16.04-share/OSLab/kernel.dbg"
+                }
+            ],
+            "logging": {
+                "engineLogging": false,
+                "trace": false,
+                "traceResponse": false
+            }
+        }
+    ]
+}
