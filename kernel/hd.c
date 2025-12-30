@@ -85,6 +85,7 @@ PUBLIC void task_hd()
 			spin("FS::main_loop (invalid msg.type)");
 			break;
 		}
+		log_hd_event(msg.type, src, msg.DEVICE, -1);
 
 		send_recv(SEND, src, &msg);
 	}

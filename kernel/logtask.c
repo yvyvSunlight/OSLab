@@ -33,7 +33,9 @@ PUBLIC void task_log(void)
     while (1) {
         log_mm_flush();
         log_sys_flush();
+        log_fs_flush();
+        log_hd_flush();
 
-        delay_ms_light(200);
+        delay_ms_light(500);
     }
 }
