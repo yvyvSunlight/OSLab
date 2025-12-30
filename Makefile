@@ -34,7 +34,7 @@ OBJS		= kernel/kernel.o kernel/start.o kernel/main.o\
 			kernel/i8259.o kernel/global.o kernel/protect.o kernel/proc.o\
 			kernel/systask.o kernel/hd.o\
 			kernel/kliba.o kernel/klib.o\
-			kernel/log.o\
+			kernel/log.o kernel/logtask.o\
 			lib/syslog.o\
 			mm/main.o mm/forkexit.o mm/exec.o\
 			fs/main.o fs/open.o fs/misc.o fs/read_write.o\
@@ -98,6 +98,7 @@ boot/loader.bin : boot/loader.asm boot/include/load.inc boot/include/fat12hdr.in
 boot/hdloader.bin : boot/hdloader.asm boot/include/load.inc boot/include/fat12hdr.inc boot/include/pm.inc
 	$(ASM) $(ASMBFLAGS) -o $@ $<
 
+# $^相当于一个宏，代表所有依赖（去重后），所以下面的链接指令才能将所有的依赖都链接进来
 $(ORANGESKERNEL) : $(OBJS) $(LIB)
 	$(LD) $(LDFLAGS) -o $(ORANGESKERNEL) $^
 

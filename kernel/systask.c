@@ -37,7 +37,7 @@ PUBLIC void task_sys()
 		case GET_TICKS:
 			msg.RETVAL = ticks;
 			send_recv(SEND, src, &msg);
-			log_sys_event(GET_TICKS, src, ticks);
+			//log_sys_event(GET_TICKS, src, ticks);
 			break;
 		case GET_PID:
 			msg.type = SYSCALL_RET;
