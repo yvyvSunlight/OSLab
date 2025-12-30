@@ -39,12 +39,9 @@ PUBLIC int kernel_main()
 
 	char * stk = task_stack + STACK_SIZE_TOTAL;
 
-<<<<<<< HEAD
 	#define TASK_LOG_INDEX 5 
 
-=======
 	// 系统任务和NATIVE用户进程
->>>>>>> 738cf51e9ceaa7614390f09aea4d4924faa64d9b
 	for (i = 0; i < NR_TASKS + NR_PROCS; i++,p++,t++) {
 		if (i >= NR_TASKS + NR_NATIVE_PROCS) {
 			p->p_flags = FREE_SLOT;
