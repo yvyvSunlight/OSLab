@@ -78,8 +78,11 @@ PUBLIC int do_rdwt()
 		assert((fs_msg.type == READ) || (fs_msg.type == WRITE));
 
 		int pos_end;
-		if (fs_msg.type == READ)
+		if (fs_msg.type == READ) {
+			if (pos >= pin->i_size)
+				return 0;
 			pos_end = min(pos + len, pin->i_size);
+		}
 		else		/* WRITE */
 		// 边界条件是给文件分配的扇区的大小而不是文件现在的大小（？）
 			pos_end = min(pos + len, pin->i_nr_sects * SECTOR_SIZE);
@@ -92,7 +95,7 @@ PUBLIC int do_rdwt()
 				FSBUF_SIZE >> SECTOR_SIZE_SHIFT);
 
 		int bytes_rw = 0;
-		int bytes_left = len;
+		int bytes_left = (fs_msg.type == READ) ? (pos_end - pos) : len;
 		int i;
 		for (i = rw_sect_min; i <= rw_sect_max; i += chunk) {
 			/* read/write this amount of bytes every time */
@@ -126,7 +129,8 @@ PUBLIC int do_rdwt()
 			bytes_left -= bytes;
 		}
 
-		if (pcaller->filp[fd]->fd_pos > pin->i_size) {
+		if (fs_msg.type == WRITE &&
+		    pcaller->filp[fd]->fd_pos > pin->i_size) {
 			/* update inode::size */
 			pin->i_size = pcaller->filp[fd]->fd_pos;
 			/* write the updated i-node back to disk */
