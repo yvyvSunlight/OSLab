@@ -114,15 +114,15 @@ PRIVATE void get_stack_bounds(struct proc *p, int pid, u32 *low, u32 *high, int 
     {
         *is_user = 0;
 
-        if (p->stack_low != 0 && p->stack_high != 0 && p->stack_low < p->stack_high)
-        {
-            *low = p->stack_low;
-            *high = p->stack_high;
-        }
-        else
-        {
-            get_task_stack_range(low, high);
-        }
+        // if (p->stack_low != 0 && p->stack_high != 0 && p->stack_low < p->stack_high)
+        // {
+        *low = p->stack_low;
+        *high = p->stack_high;
+        // }
+        // else
+        // {
+        //     get_task_stack_range(low, high);
+        // }
     }
 }
 
@@ -131,18 +131,11 @@ PRIVATE int is_ret_valid_task_native(u32 ret_la)
     u32 task_stack_low, task_stack_high;
     get_task_stack_range(&task_stack_low, &task_stack_high);
 
+    // 栈不可执行（NX）
     if (ret_la >= task_stack_low && ret_la < task_stack_high)
     {
         return 0;
     }
-
-    // u32 k_begin, k_end;
-    // get_kernel_text_range(&k_begin, &k_end);
-    // if (k_end > k_begin) {
-    //     if (ret_la < k_begin || ret_la >= k_end) {
-    //         return 0;
-    //     }
-    // }
 
     return 1;
 }
@@ -211,20 +204,6 @@ PUBLIC void stackcheck_proc(struct proc *p)
             ebp_la = ebp_off;
         }
 
-        // if (ebp_la & 0x3) {
-        //     printl("[STACKCHK] %s pid=%d name=%s frame=%d: unaligned ebp=0x%x\n",
-        //            get_proc_type_name(pid), pid, p->name, frame_count, ebp_la);
-        //     return;
-        // }
-
-        // if (ebp_la < stack_low || ebp_la + 8 > stack_high) {
-        //     if (frame_count == 0) {
-        //         printl("[STACKCHK] %s pid=%d name=%s: initial ebp=0x%x out of bounds [0x%x, 0x%x)\n",
-        //                get_proc_type_name(pid), pid, p->name, ebp_la, stack_low, stack_high);
-        //     }
-        //     return;
-        // }
-
         u32 next_ebp_off = *(u32 *)(ebp_la);
         if (next_ebp_off == 0)
         {
@@ -292,7 +271,9 @@ PUBLIC void stackcheck_on_tick()
 
     if (p_proc_ready != 0)
     {
+        printl("[CHECK] Validity check started...\n");
         stackcheck_proc(p_proc_ready);
+        printl("[CHECK] Validity check finished...\n ");
     }
 }
 

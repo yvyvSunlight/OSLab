@@ -46,7 +46,6 @@ PUBLIC void clock_handler(int irq)
 	}
 
 #ifdef ENABLE_STACKCHECK
-	/* Perform stack integrity check on current running process */
 	stackcheck_on_tick();
 #endif
 
