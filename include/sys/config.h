@@ -35,6 +35,13 @@
 #define	MINOR_BOOT			MINOR_hd2a
 
 /*
+ * Stack check configuration
+ */
+#define ENABLE_STACKCHECK
+#define STACKCHECK_INTERVAL_TICKS  100  /* Check every 100 ticks (~1 second at 100Hz) */
+#define STACKCHECK_MAX_FRAMES      64   /* Maximum frames to traverse */
+
+/*
  * disk log
  */
 #define ENABLE_DISK_LOG

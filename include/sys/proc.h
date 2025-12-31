@@ -69,7 +69,9 @@ struct proc {
 	int exit_status; /**< for parent */
 
 	struct file_desc * filp[NR_FILES];
-};
+	/* Stack bounds for TASK/NATIVE processes (linear addresses) */
+	u32 stack_low;   /**< low bound of stack (linear addr) */
+	u32 stack_high;  /**< high bound of stack (linear addr) */};
 
 struct task {
 	task_f	initial_eip;

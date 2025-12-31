@@ -29,7 +29,7 @@ ORANGESBOOT	= boot/boot.bin boot/hdboot.bin boot/loader.bin boot/hdloader.bin
 ORANGESKERNEL	= kernel.bin
 LIB		= lib/orangescrt.a
 
-OBJS		= kernel/kernel.o kernel/start.o kernel/main.o\
+OBJS		= kernel/kernel.o kernel/start.o kernel/main.o kernel/stackcheck.o\
 			kernel/clock.o kernel/keyboard.o kernel/tty.o kernel/console.o\
 			kernel/i8259.o kernel/global.o kernel/protect.o kernel/proc.o\
 			kernel/systask.o kernel/hd.o\
@@ -145,6 +145,9 @@ kernel/protect.o: kernel/protect.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 kernel/proc.o: kernel/proc.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+kernel/stackcheck.o: kernel/stackcheck.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 lib/printf.o: lib/printf.c

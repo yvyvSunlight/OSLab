@@ -144,6 +144,10 @@ PUBLIC void	inform_int(int task_nr);
 /* lib/misc.c */
 PUBLIC void spin(char * func_name);
 
+/* kernel/stackcheck.c */
+PUBLIC void stackcheck_on_tick();
+PUBLIC void stackcheck_proc(struct proc* p);
+
 /* 以下是系统调用相关 */
 
 /* 系统调用 - 系统级 */

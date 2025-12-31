@@ -112,6 +112,10 @@ PUBLIC int kernel_main()
 		p->regs.esp	= (u32)stk;
 		p->regs.eflags	= eflags;
 
+		/* Record stack bounds for TASK/NATIVE (linear addresses) */
+		p->stack_high = (u32)stk;              /* initial esp (high end) */
+		p->stack_low  = (u32)(stk - t->stacksize); /* low end */
+
 		// ========== 关键改动2：确认优先级赋值（原有逻辑保留，已通过上面的 prio 变量修改） ==========
 		p->ticks = p->priority = prio;
 		p->queue_level = 0;

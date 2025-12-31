@@ -18,6 +18,7 @@
 #include "console.h"
 #include "global.h"
 #include "proto.h"
+#include "config.h"
 
 /*****************************************************************************
  *                                clock_handler
@@ -43,6 +44,11 @@ PUBLIC void clock_handler(int irq)
 	{
 		return;
 	}
+
+#ifdef ENABLE_STACKCHECK
+	/* Perform stack integrity check on current running process */
+	stackcheck_on_tick();
+#endif
 
 	if (p_proc_ready->ticks > 0)
 	{
