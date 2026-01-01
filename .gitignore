@@ -32,3 +32,4 @@ command/ret2lib
 command/ret2shellcode
 command/cat
 command/pstackof
+command/inject
