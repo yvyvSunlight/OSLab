@@ -100,8 +100,10 @@ PUBLIC int		do_stat();
 PUBLIC int		strip_path(char * filename, const char * pathname,
 				   struct inode** ppinode);
 PUBLIC int		search_file(char * path);
-PUBLIC int		do_set_checksum();
 PUBLIC int		do_get_checksum();
+PUBLIC int		do_calc_checksum();
+PUBLIC int		do_verify_checksum();
+PUBLIC int		do_refresh_checksums();
 
 /* fs/disklog.c */
 PUBLIC int		do_disklog();
@@ -147,6 +149,11 @@ PUBLIC void spin(char * func_name);
 /* kernel/stackcheck.c */
 PUBLIC void stackcheck_on_tick();
 PUBLIC void stackcheck_proc(struct proc* p);
+
+/* kernel/timestamp.c */
+PUBLIC void init_timestamp();
+PUBLIC u32  get_timestamp();
+PUBLIC u32  generate_checksum_key();
 
 /* 以下是系统调用相关 */
 

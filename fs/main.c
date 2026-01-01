@@ -66,13 +66,18 @@ PUBLIC void task_fs()
 			fs_msg.RETVAL = do_unlink();
 			log_fs_event(msgtype, src, fs_msg.RETVAL);
 			break;
-		case SET_CHECKSUM:
-			fs_msg.RETVAL = do_set_checksum();
-			log_fs_event(msgtype, src, fs_msg.RETVAL);
-			break;
 		case GET_CHECKSUM:
 			fs_msg.RETVAL = do_get_checksum();
 			log_fs_event(msgtype, src, fs_msg.RETVAL);
+			break;
+		case CALC_CHECKSUM:
+			fs_msg.RETVAL = do_calc_checksum();
+			break;
+		case VERIFY_CHECKSUM:
+			fs_msg.RETVAL = do_verify_checksum();
+			break;
+		case REFRESH_CHECKSUMS:
+			fs_msg.RETVAL = do_refresh_checksums();
 			break;
 		case RESUME_PROC:
 			log_fs_event(msgtype, src, fs_msg.PROC_NR);
@@ -117,9 +122,11 @@ PUBLIC void task_fs()
 		msg_name[FORK]   = "FORK";
 		msg_name[EXIT]   = "EXIT";
 		msg_name[STAT]   = "STAT";
-		msg_name[SET_CHECKSUM] = "SET_CHECKSUM";
 		msg_name[GET_CHECKSUM] = "GET_CHECKSUM";
 		msg_name[TRUNCATE] = "TRUNCATE";
+		msg_name[CALC_CHECKSUM] = "CALC_CHECKSUM";
+		msg_name[VERIFY_CHECKSUM] = "VERIFY_CHECKSUM";
+		msg_name[REFRESH_CHECKSUMS] = "REFRESH_CHECKSUMS";
 
 		switch (msgtype) {
 		case UNLINK:
@@ -138,8 +145,10 @@ PUBLIC void task_fs()
 			break;
 		case RESUME_PROC:
 			break;
-		case SET_CHECKSUM:
 		case GET_CHECKSUM:
+		case CALC_CHECKSUM:
+		case VERIFY_CHECKSUM:
+		case REFRESH_CHECKSUMS:
 			break;
 		default:
 			assert(0);
@@ -191,9 +200,11 @@ PRIVATE void init_fs()
 	RD_SECT(ROOT_DEV, 1);
 
 	sb = (struct super_block *)fsbuf;
-	if (sb->magic != MAGIC_V1) {
-		printl("{FS} mkfs\n");
-		mkfs(); /* make FS */
+	if (sb->magic != MAGIC_V1 || sb->inode_size != INODE_SIZE)
+	{
+		printl("{FS} mkfs (magic=0x%x inode_size=%d expect=%d)\n",
+			   sb->magic, sb->inode_size, INODE_SIZE);
+		mkfs();
 	}
 
 	/* load super block of ROOT */
@@ -499,8 +510,7 @@ PUBLIC struct super_block * get_super_block(int dev)
  * @return The inode ptr requested.
  *****************************************************************************/
 // 给定 (dev, inode号)，返回内存缓冲区中对应的inode的指针。如果已在缓存中 → 直接返回；否则 → 从磁盘读入inode_table。
-	PUBLIC struct inode *
-	get_inode(int dev, int num)
+PUBLIC struct inode * get_inode(int dev, int num)
 {
 	if (num == 0)
 		return 0;
@@ -541,7 +551,8 @@ PUBLIC struct super_block * get_super_block(int dev)
 	q->i_size = pinode->i_size;
 	q->i_start_sect = pinode->i_start_sect;
 	q->i_nr_sects = pinode->i_nr_sects;
-	q->check_sum = pinode->check_sum;
+	memcpy(q->md5_checksum, pinode->md5_checksum, MD5_HASH_LEN);
+	// q->checksum_key = 0; /* key no longer stored on disk */
 	return q;
 }
 
@@ -585,7 +596,8 @@ PUBLIC void put_inode(struct inode * pinode)
 	pinode->i_size = p->i_size;
 	pinode->i_start_sect = p->i_start_sect;
 	pinode->i_nr_sects = p->i_nr_sects;
-	pinode->check_sum = p->check_sum;
+	memcpy(pinode->md5_checksum, p->md5_checksum, MD5_HASH_LEN);
+	// pinode->checksum_key = 0; /* never persist key */
 	WR_SECT(p->i_dev, blk_nr);
 }
 

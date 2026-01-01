@@ -299,8 +299,9 @@ static const char* fs_type_name(int msgtype)
     case EXIT:   return "EXIT";
     case STAT:   return "STAT";
     case TRUNCATE: return "TRUNCATE";
-    case SET_CHECKSUM: return "SET_CHECKSUM";
     case GET_CHECKSUM: return "GET_CHECKSUM";
+    case CALC_CHECKSUM: return "CALC_CHECKSUM";
+    case VERIFY_CHECKSUM: return "VERIFY_CHECKSUM";
     default:     return "UNKNOWN";
     }
 }
@@ -519,6 +520,8 @@ void log_hd_event(int msgtype, int src, int dev, int val)
 
     if (!HD_LOG_ENABLE) return;
     if (g_hd_suppress) return;
+
+    dev = (dev > 256) ? (dev & 0xFF) : (dev & 0xF);
 
     get_rtc_time_log(&t);
 
