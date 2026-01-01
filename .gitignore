@@ -9,6 +9,7 @@ config/
 *.bin
 *.dbg
 *.map
+*.o
 lib/orangescrt.a
 
 # 打包文件
