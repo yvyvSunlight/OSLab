@@ -87,9 +87,9 @@ PRIVATE void get_stack_bounds(struct proc *p, int pid, u32 *low, u32 *high, int 
         // {
         //     p->stack_low = esp_la;
         // }
-        if (p->regs.eip < p->stack_low)
+        if (p->regs.esp < p->stack_low)
         {
-            p->stack_low = p->regs.eip;
+            p->stack_low = p->regs.esp;
         }
 
         *low = p->stack_low;
