@@ -2,6 +2,7 @@
 #include "const.h"
 #include "type.h"
 #include "string.h"
+#include "fs.h"
 
 #define BUFFER_SIZE 1024
 #define MAX_LINES 1000
@@ -52,6 +53,8 @@ static int string_to_int(const char *str)
 }
 
 static int open_file(const char *filename, int flags);
+static int is_executable(const char *path);
+static int try_execute_target(const char *filename);
 static void write_content(const char *filename);
 static void delete_content(const char *filename);
 static void show_content(const char *filename);
@@ -72,6 +75,11 @@ int main(int argc, char *argv[])
 
 	char *filename = argv[1];
 	active_filename = filename;
+
+	/* If target is an executable, run it instead of editing to avoid corrupting binaries. */
+	if (try_execute_target(filename))
+		return 0;
+
 	refresh_file_size(filename);
 	update_cursor_display();
 	char operation;
@@ -121,6 +129,39 @@ int main(int argc, char *argv[])
 	}
 
 	return 0;
+}
+
+static int is_executable(const char *path)
+{
+	struct stat info;
+	char magic[4];
+
+	if (stat(path, &info) != 0)
+		return 0;
+
+	int fd = open(path, O_RDWR);
+	if (fd == -1)
+		return 0;
+
+	int n = read(fd, magic, sizeof(magic));
+	close(fd);
+
+	if (n < (int)sizeof(magic))
+		return 0;
+
+	return magic[0] == 0x7f && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F';
+}
+
+static int try_execute_target(const char *filename)
+{
+	if (!is_executable(filename))
+		return 0;
+
+	printf("%s is executable, launching...\n", filename);
+	if (exec(filename) != 0)
+		printf("Failed to execute %s.\n", filename);
+
+	return 1;
 }
 
 static int open_file(const char *filename, int flags)

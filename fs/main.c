@@ -119,6 +119,7 @@ PUBLIC void task_fs()
 		msg_name[STAT]   = "STAT";
 		msg_name[SET_CHECKSUM] = "SET_CHECKSUM";
 		msg_name[GET_CHECKSUM] = "GET_CHECKSUM";
+		msg_name[TRUNCATE] = "TRUNCATE";
 
 		switch (msgtype) {
 		case UNLINK:
@@ -133,6 +134,7 @@ PUBLIC void task_fs()
 		case EXIT:
 		case LSEEK:
 		case STAT:
+		case TRUNCATE:
 			break;
 		case RESUME_PROC:
 			break;
