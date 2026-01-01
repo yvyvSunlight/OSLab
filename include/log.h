@@ -21,7 +21,6 @@ void log_mm_close(void);
 void log_sys_close(void);
 
 /* log.h */
-
 void log_fs_enable(int enable);
 void log_hd_enable(int enable);
 

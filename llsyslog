@@ -1,0 +1,133 @@
+               
+<2026-01-01 19:17:36>
+         
+digraph filedesc00 {
+	graph [
+		rankdir = "LR"
+	];
+	node [
+		fontsize = "16"
+		shape = "ellipse"
+	];
+	edge [
+	];
+
+	subgraph cluster_0 {
+		"proc0" [
+			label = "<f0>TTY (0) |<f1> p_flags:4(RECEIVING)|<f2> p_parent:58(NO_TASK)|<f3> eip:0xF9D6	"
+			shape = "record"
+		];
+		"proc1" [
+			label = "<f0>SYS (1) |<f1> p_flags:4(RECEIVING)|<f2> p_parent:58(NO_TASK)|<f3> eip:0xF9D6	"
+			shape = "record"
+		];
+		"proc2" [
+			label = "<f0>HD (2) |<f1> p_flags:4(RECEIVING)|<f2> p_parent:58(NO_TASK)|<f3> eip:0xF9D6	"
+			shape = "record"
+		];
+		"proc3" [
+			label = "<f0>FS (3) |<f1> p_flags:0(RUNNING)|<f2> p_parent:58(NO_TASK)|<f3> eip:0xF9E6	"
+			shape = "record"
+		];
+		"proc4" [
+			label = "<f0>MM (4) |<f1> p_flags:4(RECEIVING)|<f2> p_parent:58(NO_TASK)|<f3> eip:0xF9D6	"
+			shape = "record"
+		];
+		"proc5" [
+			label = "<f0>LOG (5) |<f1> p_flags:4(RECEIVING)|<f2> p_parent:58(NO_TASK)|<f3> eip:0xF9D6	"
+			shape = "record"
+		];
+		"proc6" [
+			label = "<f0>INIT (6) |<f1> p_flags:12(RECEIVING, WAITING)|<f2> p_parent:58(NO_TASK)|<f3> eip:0xF9D6	|<f3> filp[0]: 0	|<f4> filp[1]: 1	"
+			shape = "record"
+		];
+		"proc7" [
+			label = "<f0>TestA (7) |<f1> p_flags:0(RUNNING)|<f2> p_parent:58(NO_TASK)|<f3> eip:0xF09B	"
+			shape = "record"
+		];
+		"proc8" [
+			label = "<f0>TestB (8) |<f1> p_flags:0(RUNNING)|<f2> p_parent:58(NO_TASK)|<f3> eip:0xEE4E	"
+			shape = "record"
+		];
+		"proc9" [
+			label = "<f0>TestC (9) |<f1> p_flags:0(RUNNING)|<f2> p_parent:58(NO_TASK)|<f3> eip:0xF09B	"
+			shape = "record"
+		];
+		"proc10" [
+			label = "<f0>INIT_10 (10) |<f1> p_flags:4(RECEIVING)|<f2> p_parent:6|<f3> eip:0xF9D6	|<f3> filp[0]: 2	|<f4> filp[1]: 3	"
+			shape = "record"
+		];
+		"proc11" [
+			label = "<f0>INIT_11 (11) |<f1> p_flags:4(RECEIVING)|<f2> p_parent:6|<f3> eip:0xF9D6	|<f3> filp[0]: 4	|<f4> filp[1]: 5	"
+			shape = "record"
+		];
+		"proc12" [
+			label = "<f0>INIT_12 (12) |<f1> p_flags:4(RECEIVING)|<f2> p_parent:6|<f3> eip:0xF9D6	|<f3> filp[0]: 6	|<f4> filp[1]: 7	"
+			shape = "record"
+		];
+		"proc13" [
+			label = "<f0>INIT_13 (13) |<f1> p_flags:4(RECEIVING)|<f2> p_parent:6|<f3> eip:0xF9D6	|<f3> filp[0]: 8	|<f4> filp[1]: 9	"
+			shape = "record"
+		];
+		"proc48" [
+			label = "<f0>ANY |<f1> 	"
+			shape = "record"
+		];
+		label = "procs";
+	}
+
+	subgraph cluster_1 {
+		"filedesc0" [
+			label = "<f0>filedesc 0|<f1> fd_mode:2|<f2> fd_pos:0|<f3> fd_cnt:1|<f4> fd_inode:1	"
+			shape = "record"
+		];
+		"filedesc1" [
+			label = "<f0>filedesc 1|<f1> fd_mode:2|<f2> fd_pos:0|<f3> fd_cnt:1|<f4> fd_inode:1	"
+			shape = "record"
+		];
+		"filedesc2" [
+			label = "<f0>filedesc 2|<f1> fd_mode:2|<f2> fd_pos:0|<f3> fd_cnt:1|<f4> fd_inode:2	"
+			shape = "record"
+		];
+		"filedesc3" [
+			label = "<f0>filedesc 3|<f1> fd_mode:2|<f2> fd_pos:0|<f3> fd_cnt:1|<f4> fd_inode:2	"
+			shape = "record"
+		];
+		"filedesc4" [
+			label = "<f0>filedesc 4|<f1> fd_mode:2|<f2> fd_pos:0|<f3> fd_cnt:1|<f4> fd_inode:2	"
+			shape = "record"
+		];
+		"filedesc5" [
+			label = "<f0>filedesc 5|<f1> fd_mode:2|<f2> fd_pos:0|<f3> fd_cnt:1|<f4> fd_inode:2	"
+			shape = "record"
+		];
+		"filedesc6" [
+			label = "<f0>filedesc 6|<f1> fd_mode:2|<f2> fd_pos:0|<f3> fd_cnt:1|<f4> fd_inode:3	"
+			shape = "record"
+		];
+		"filedesc7" [
+			label = "<f0>filedesc 7|<f1> fd_mode:2|<f2> fd_pos:0|<f3> fd_cnt:1|<f4> fd_inode:3	"
+			shape = "record"
+		];
+		"filedesc8" [
+			label = "<f0>filedesc 8|<f1> fd_mode:2|<f2> fd_pos:0|<f3> fd_cnt:1|<f4> fd_inode:3	"
+			shape = "record"
+		];
+		"filedesc9" [
+			label = "<f0>filedesc 9|<f1> fd_mode:2|<f2> fd_pos:0|<f3> fd_cnt:1|<f4> fd_inode:3	"
+			shape = "record"
+		];
+		label = "filedescs";
+	}
+
+	subgraph cluster_2 {
+		"inode0" [
+			label = "<f0>inode 0|<f1> i_mode:0x4000|<f2> i_size:0x1B0|<f3> i_start_sect:0x10D|<f4> i_nr_sects:0x800|<f5> i_dev:0x320|<f6> i_cnt:1|<f7> i_num:1	"
+			shape = "record"
+		];
+		"inode1" [
+			label = "<f0>inode 1|<f1> i_mode:0x2000|<f2> i_size:0x0|<f3> i_start_sect:0x400|<f4> i_nr_sects:0x0|<f5> i_dev:0x320|<f6> i_cnt:2|<f7> i_num:2	"
+			shape = "record"
+		];
+		"inode2" [
+			label = "<f0>inode 2|<f1> i_mode:0x2000|<f2> i_size:0x0|<f3> 
