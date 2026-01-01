@@ -36,3 +36,4 @@ command/pstackof
 command/inject
 
 build_and_update.sh
+.gdb_history
