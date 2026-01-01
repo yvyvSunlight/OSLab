@@ -34,3 +34,5 @@ command/ret2shellcode
 command/cat
 command/pstackof
 command/inject
+
+build_and_update.sh

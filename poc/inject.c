@@ -30,15 +30,6 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-/* 将整数地址转换为 4 个字节的数组（小端序） */
-void cal_addr(int entry, int addr[]) {
-    int temp = entry;
-    int i;
-    for (i = 0; i < 4; i++) {
-        addr[i] = temp % 256;
-        temp /= 256;
-    }
-}
 
 /* 注入逻辑的主要入口 */
 void inject(char* elf_file) {
@@ -48,27 +39,17 @@ void inject(char* elf_file) {
     Elf32_Ehdr elf_ehdr;
     Elf32_Phdr elf_phdr;
 
-    /* 1. 读取 ELF 文件头 */
+    // 1. 打开 ELF文件并读取 ELF 头 拿到entry地址
     int old_file = open(elf_file, O_RDWR);
     read(old_file, &elf_ehdr, sizeof(Elf32_Ehdr));
-    old_entry = elf_ehdr.e_entry; // 保存原始入口地址
-    printf("old_entry: %x\n", old_entry);
+    old_entry = elf_ehdr.e_entry;    // 保存原始入口地址
+    printf("old_entry: 0x%x\n", old_entry);
 
-    int i = 0;
 
-    printf("Modifying the program header table...\n");
-    /* 2. 读取程序头表 (Program Header Table) */
     close(old_file);
-    old_file = open(elf_file, O_RDWR);
-    char buffer[20000];
-    // 读取直到程序头表偏移位置的数据（这里只是为了移动文件指针或者缓存？）
-    // 注意：这里 buffer 大小固定，如果 e_phoff 很大可能会溢出
-    read(old_file, buffer, elf_ehdr.e_phoff); 
-    read(old_file, &elf_phdr, sizeof(elf_phdr)); // 读取第一个程序头
 
     printf("Inserting the injector...\n");
-    /* 3. 执行实际的插入操作 */
-    close(old_file);
+    // 在程序入口 插入注入程序
     insert(elf_ehdr, elf_file, old_entry);
 }
 
@@ -76,52 +57,39 @@ void inject(char* elf_file) {
 void insert(Elf32_Ehdr elf_ehdr, char* elf_file, int old_entry) {
     // 将原始入口地址转换为字节数组，以便嵌入到 shellcode 中
     int old_entry_addr[4];
-    cal_addr(old_entry, old_entry_addr);
-
-    printf("old_entry = 0x%x%x%x%x\n", old_entry_addr[3],old_entry_addr[2],old_entry_addr[1],old_entry_addr[0]);
     
-    /* 
-     * 注入的 Shellcode 代码 
-     * 0x68 是 PUSH 指令的操作码
-     * 这里似乎只是一个简单的示例，Push 了一个地址，但没有完整的跳转逻辑？
-     * 通常这里会是: PUSH old_entry; RET; 或者 JMP old_entry;
-     * 这里的代码看起来不完整，仅作演示用途。
-     */
     char inject_code[] = {
-        0x68,       // PUSH
-        0x00,       // Address byte 1
-        0x20,       // Address byte 2
-        0x00,       // Address byte 3
-        0x00        // Address byte 4
+        0x55,         // push   ebp
+        0x89, 0xe5,   // mov    ebp,esp
+        0xeb, 0xfe    // eip = eip +2 -2  jump to self (infinite loop)
     };
     int inject_size = sizeof(inject_code);
 
-    // 防止注入代码太大超过一页
+    // 防止注入代码太大
     if (inject_size > PAGESIZE) {
         printf("Injecting code is too big!\n");
         exit(0);
     }
 
-    /* 4. 写入注入代码 */
-    // 这里假设注入点在文件偏移 0x1024 处？
-    // 注意：这种硬编码偏移的方式非常危险，仅适用于特定的 ELF 文件结构
+    //  4. 写入注入代码
     int old_file = open(elf_file, O_RDWR);
     u8 buffer[20000];
-    read(old_file, buffer, 0x1024); // 跳过前 0x1024 字节
+    read(old_file, buffer, old_entry); // 跳过前 old_entry 字节
     write(old_file, inject_code, inject_size); // 写入 shellcode
     close(old_file);
 
-    /* 5. 验证写入结果 (可选) */
+    // 5. 验证写入结果 (可选) 
     old_file = open(elf_file, O_RDWR);
-    read(old_file, buffer, 0x1024);
+    read(old_file, buffer, old_entry);
     read(old_file, buffer, 5);
+    printf("After injecting code:\n");
     for (int i = 0; i < 5; i++) {
-        printf("%x\n", buffer[i]);
+        printf("0x%x ", buffer[i]);
     }
+    printf("\n");
     close(old_file);
 
-    /* 6. 计算并更新文件校验和 */
-    // update md5
+    // 6. 计算并更新文件校验和
     int fd = open(elf_file, O_RDWR);
 
     struct stat s;
