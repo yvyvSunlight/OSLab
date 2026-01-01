@@ -169,16 +169,19 @@ typedef struct ringbuf {
     int   tail;
 } ringbuf_t;
 
+// 计算已用空间
 static int ring_used_nolock(const ringbuf_t* r)
 {
     return (r->head >= r->tail) ? (r->head - r->tail) : (r->size - (r->tail - r->head));
 }
 
+// 计算空闲空间
 static int ring_free_nolock(const ringbuf_t* r)
 {
     return r->size - ring_used_nolock(r) - 1;
 }
 
+// 丢弃最旧的数据
 static void ring_drop_oldest_nolock(ringbuf_t* r, int bytes)
 {
     while (bytes-- > 0) {
@@ -187,6 +190,7 @@ static void ring_drop_oldest_nolock(ringbuf_t* r, int bytes)
     }
 }
 
+// 推入数据
 static void ring_push(ringbuf_t* r, const char* s, int len)
 {
     if (!r || !s || len <= 0) return;
@@ -225,6 +229,7 @@ static void ring_push(ringbuf_t* r, const char* s, int len)
     log_unlock();
 }
 
+// 弹出数据
 static int ring_pop(ringbuf_t* r, char* out, int maxlen)
 {
     int used, n, cont, left;
@@ -329,7 +334,8 @@ static const char* hd_type_name(int msgtype)
 /* =========================================================
  * IO helpers
  * ========================================================= */
-static int open_append_rotate(const char* path, int max_bytes)
+// 打开文件，若超过 max_bytes 则 rotate（删除重建）
+ static int open_append_rotate(const char* path, int max_bytes)
 {
     int fd = open(path, O_RDWR);
     if (fd < 0) fd = open(path, O_CREAT | O_RDWR);
@@ -349,7 +355,7 @@ static int open_append_rotate(const char* path, int max_bytes)
     return fd;
 }
 
-/* 普通写：尽量写完，返回写入的字节数 */
+// 文件写入工具：尽量写完，返回写入的字节数
 static int write_all_once(int fd, const char* buf, int n)
 {
     int off = 0;
@@ -361,11 +367,7 @@ static int write_all_once(int fd, const char* buf, int n)
     return off;
 }
 
-/*
- * 关键补丁：write失败也rotate（异常路径）
- * - 用于处理“真实文件最大尺寸 < 你设置的 max_file”的情况
- * - 正常写成功时行为完全不变
- */
+// 特殊情况下的写入：写失败时尝试rotate
 static void write_all_may_rotate(int* pfd, const char* path, int max_file,
                                 const char* buf, int n)
 {
@@ -400,9 +402,8 @@ static void write_all_may_rotate(int* pfd, const char* path, int max_file,
 /* =========================================================
  * flush common（统一模板）
  * ========================================================= */
-static void flush_common(ringbuf_t* rb, const char* path, int max_file,
-                         int suppress_fs, int suppress_hd,
-                         volatile int* self_flag_to_set)
+// 通用flush函数模板
+static void flush_common(ringbuf_t* rb, const char* path, int max_file, int suppress_fs, int suppress_hd, volatile int* self_flag_to_set)
 {
     char tmp[512];
     int n;
@@ -451,12 +452,12 @@ void log_sys_event(int msgtype, int src, int val)
 
     if (val == -1) {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d] SYS_%s\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [pid=%d] SYS_%s\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, sys_type_name(msgtype));
     } else {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d] SYS_%s val=%d\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [pid=%d] SYS_%s val=%d\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, sys_type_name(msgtype), val);
     }
@@ -479,12 +480,12 @@ void log_mm_event(int msgtype, int src, int val)
 
     if (val == -1) {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d] MM_%s\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [pid=%d] MM_%s\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, mm_type_name(msgtype));
     } else {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d] MM_%s val=%d\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [pid=%d] MM_%s val=%d\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, mm_type_name(msgtype), val);
     }
@@ -508,12 +509,12 @@ void log_fs_event(int msgtype, int src, int val)
 
     if (val == -1) {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d] FS_%s\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [pid=%d] FS_%s\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, fs_type_name(msgtype));
     } else {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d] FS_%s val=%d\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [pid=%d] FS_%s val=%d\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, fs_type_name(msgtype), val);
     }
@@ -537,12 +538,12 @@ void log_hd_event(int msgtype, int src, int dev, int val)
 
     if (val == -1) {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d dev=%d] HD_%s\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [pid=%d dev=%d] HD_%s\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, dev, hd_type_name(msgtype));
     } else {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d dev=%d] HD_%s val=%d\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [pid=%d dev=%d] HD_%s val=%d\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, dev, hd_type_name(msgtype), val);
     }
