@@ -85,8 +85,8 @@ struct inode {
 	u32	i_start_sect;	/**< The first sector of the data */
 	u32	i_nr_sects;	/**< How many sectors the file occupies */
 	char	md5_checksum[MD5_HASH_LEN];	/**< MD5校验和（32字符十六进制，不含'\0'） */
-	u32	checksum_key;	/**< 用于计算MD5的key */
-	u8	_unused[12];	/**< Stuff for alignment，确保磁盘布局64字节 */
+	// u32	checksum_key;	/**< 用于计算MD5的key */
+	u8	_unused[16];	/**< Stuff for alignment，确保磁盘布局64字节 */
 
 	/* the following items are only present in memory */
 	int	i_dev;

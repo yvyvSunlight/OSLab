@@ -1,39 +1,11 @@
-/*************************************************************************//**
- *****************************************************************************
+/***************************************************************************
+ ****************************************************************************
  * @file   misc.c
- * @brief  
+ * @brief  FS helpers + checksum helpers (key stays inside FS)
  * @author Forrest Y. Yu
  * @date   2008
- *****************************************************************************
+ ****************************************************************************
  *****************************************************************************/
-
-/* Orange'S FS */
-
-#include "type.h"
-#include "stdio.h"
-#include "const.h"
-#include "protect.h"
-#include "string.h"
-#include "fs.h"
-#include "proc.h"
-/**
-#include "tty.h"
-#include "console.h"
-#include "global.h"
-#include "keyboard.h"
-#include "proto.h"
-#include "hd.h"
-#include "fs.h"
-
-/*****************************************************************************
- *                                do_stat
- *************************************************************************//**
-	char md5_str[MD5_STR_BUF_LEN];
- * 
-/**
- * @file   misc.c
- * @brief  FS helpers + checksum helpers (key stays in FS)
- */
 
 /* Orange'S FS */
 
@@ -52,7 +24,7 @@
 #include "hd.h"
 
 /* ============================================================
- * checksum key: FS 私有（不落盘、不通过消息返回）
+ * checksum key: FS private (never stored or returned)
  * ============================================================ */
 PRIVATE int s_ck_inited = 0;
 PRIVATE u32 s_ck_key = 0;
@@ -296,7 +268,69 @@ PRIVATE void bytes_to_hex(u8 *bytes, int len, char *hex_str)
 	hex_str[len * 2] = '\0';
 }
 
-c
+/*****************************************************************************
+ *                         calc_md5_for_file
+ *****************************************************************************/
+/**
+ * FS 内部：计算 MD5(key || file_content || key)
+ * 按扇区循环读取，避免一次性大内存分配
+ *
+ * @param pin   指向文件的 inode（必须是普通文件）
+ * @param out   输出缓冲区，至少 MD5_STR_BUF_LEN (33) 字节
+ * @return      0 成功，-1 失败
+ */
+PRIVATE int calc_md5_for_file(struct inode *pin, char out[MD5_STR_BUF_LEN])
+{
+	u8 digest[16];
+	u8 key_bytes[4];
+	MD5_CTX ctx;
+
+	if (!pin || !out)
+		return -1;
+
+	/* 只对普通文件做校验，跳过设备文件/目录 */
+	if (is_special(pin->i_mode))
+		return -1;
+
+	/* 确保 key 已初始化 */
+	ensure_checksum_key_inited();
+
+	/* key 转小端字节序 */
+	key_bytes[0] = (u8)(s_ck_key & 0xFF);
+	key_bytes[1] = (u8)((s_ck_key >> 8) & 0xFF);
+	key_bytes[2] = (u8)((s_ck_key >> 16) & 0xFF);
+	key_bytes[3] = (u8)((s_ck_key >> 24) & 0xFF);
+
+	/* MD5(key || file || key) */
+	md5_init(&ctx);
+	md5_update(&ctx, key_bytes, 4);  /* 前置 key */
+
+	/* 按扇区循环读取文件内容 */
+	u32 bytes_left = pin->i_size;
+	u32 sect_nr = pin->i_start_sect;
+
+	while (bytes_left > 0) {
+		/* 读一个扇区到 fsbuf */
+		RD_SECT(pin->i_dev, sect_nr);
+
+		/* 本次要处理的字节数 */
+		u32 chunk = (bytes_left < SECTOR_SIZE) ? bytes_left : SECTOR_SIZE;
+
+		/* 更新 MD5 */
+		md5_update(&ctx, (u8*)fsbuf, chunk);
+
+		bytes_left -= chunk;
+		sect_nr++;
+	}
+
+	md5_update(&ctx, key_bytes, 4);  /* 后置 key */
+	md5_final(digest, &ctx);
+
+	/* 转为 32 字符 hex 字符串 */
+	bytes_to_hex(digest, 16, out);
+
+	return 0;
+}
 
 /*****************************************************************************
  *                                do_stat
@@ -377,7 +411,7 @@ PUBLIC int do_set_checksum()
 	struct inode * pin = get_inode(dir_inode->i_dev, inode_nr);
 
 	memcpy(pin->md5_checksum, md5_str, MD5_HASH_LEN);
-	pin->checksum_key = 0; /* never stored */
+	// pin->checksum_key = 0; /* never stored */
 
 	sync_inode(pin);
 	put_inode(pin);
@@ -447,7 +481,7 @@ PUBLIC int do_calc_checksum()
 	struct inode * pin = get_inode(dir_inode->i_dev, inode_nr);
 
 	char md5_str[MD5_STR_BUF_LEN];
-	if (fs_calc_md5_for_inode(pin, md5_str) != 0) {
+	if (calc_md5_for_file(pin, md5_str) != 0) {
 		put_inode(pin);
 		return -1;
 	}
@@ -488,7 +522,8 @@ PUBLIC int do_verify_checksum()
 	struct inode * pin = get_inode(dir_inode->i_dev, inode_nr);
 
 	char md5_str[MD5_STR_BUF_LEN];
-	if (fs_calc_md5_for_inode(pin, md5_str) != 0) {
+	if (calc_md5_for_file(pin, md5_str) != 0)
+	{
 		put_inode(pin);
 		return -1;
 	}
@@ -569,6 +604,4 @@ PUBLIC int strip_path(char * filename, const char * pathname, struct inode** ppi
 	*ppinode = root_inode;
 	return 0;
 }
- *****************************************************************************/
 
-PUBLIC int do_stat()

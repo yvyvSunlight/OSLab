@@ -155,10 +155,6 @@ PUBLIC void init_timestamp();
 PUBLIC u32  get_timestamp();
 PUBLIC u32  generate_checksum_key();
 
-/* kernel/filecheck.c */
-PUBLIC int  compare_md5_strings(const char *md5_1, const char *md5_2);
-PUBLIC int  compute_md5_with_key_fd(int fd, u32 data_len, u32 key, char *result);
-
 /* 以下是系统调用相关 */
 
 /* 系统调用 - 系统级 */

@@ -551,7 +551,7 @@ PUBLIC struct inode * get_inode(int dev, int num)
 	q->i_start_sect = pinode->i_start_sect;
 	q->i_nr_sects = pinode->i_nr_sects;
 	memcpy(q->md5_checksum, pinode->md5_checksum, MD5_HASH_LEN);
-	q->checksum_key = 0; /* key no longer stored on disk */
+	// q->checksum_key = 0; /* key no longer stored on disk */
 	return q;
 }
 
@@ -596,7 +596,7 @@ PUBLIC void put_inode(struct inode * pinode)
 	pinode->i_start_sect = p->i_start_sect;
 	pinode->i_nr_sects = p->i_nr_sects;
 	memcpy(pinode->md5_checksum, p->md5_checksum, MD5_HASH_LEN);
-	pinode->checksum_key = 0; /* never persist key */
+	// pinode->checksum_key = 0; /* never persist key */
 	WR_SECT(p->i_dev, blk_nr);
 }
 

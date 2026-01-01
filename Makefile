@@ -35,7 +35,7 @@ OBJS		= kernel/kernel.o kernel/start.o kernel/main.o kernel/stackcheck.o\
 			kernel/systask.o kernel/hd.o\
 			kernel/kliba.o kernel/klib.o\
 			kernel/log.o kernel/logtask.o\
-			kernel/timestamp.o kernel/filecheck.o\
+			kernel/timestamp.o\
 			lib/syslog.o\
 			mm/main.o mm/forkexit.o mm/exec.o\
 			fs/main.o fs/open.o fs/misc.o fs/read_write.o\
@@ -154,9 +154,6 @@ kernel/stackcheck.o: kernel/stackcheck.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 kernel/timestamp.o: kernel/timestamp.c
-	$(CC) $(CFLAGS) -o $@ $<
-
-kernel/filecheck.o: kernel/filecheck.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 lib/printf.o: lib/printf.c
