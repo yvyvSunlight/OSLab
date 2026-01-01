@@ -1,19 +1,6 @@
 /*
-@Author  : Ramoor (modified, refactored)
+@Author  : Ramoor
 @Date    : 2026-01-01
-@Fixes   :
-  1) log_lock/log_unlock -> nest-safe
-  2) flush期间抑制FS/HD日志，避免日志风暴/活锁/环路等待放大
-  3) 日志文件大小上限 + rotate(unlink重建)
-  4) write返回值检查（write_all）
-@Refactor:
-  - 统一 ring buffer 逻辑（ringbuf_t + ring_push/pop）
-  - 统一 flush 模板（flush_common）
-  - 统一 suppress 开关（suppress_begin/end）
-@Bugfix (KEEP FEATURES):
-  - 当文件系统“真实单文件上限”小于 FS_LOG_MAX_FILE 时，fs.log 会先写满导致 write 失败，
-    但 size 仍达不到阈值，rotate 永不触发 -> “满了不刷新”
-  - 解决：write 失败时也触发 rotate（异常路径），正常路径不变
 */
 
 #include "type.h"
@@ -58,6 +45,13 @@
 /* 是否把日志同时printl到控制台 */
 #define LOG_ECHO_CONSOLE  0
 
+/* 日志开关 */
+//#define LOG_ENABLE_TASK 1
+#define MM_LOG_ENABLE  1
+#define SYS_LOG_ENABLE 1
+#define FS_LOG_ENABLE  1
+#define HD_LOG_ENABLE  1
+
 /* =========================================================
  *  嵌套锁实现
  * ========================================================= */
@@ -96,18 +90,10 @@ static void log_unlock(void)
 /* =========================================================
  * enable / suppress
  * ========================================================= */
-static int g_mm_log_enabled  = 1;
-static int g_sys_log_enabled = 1;
-static int g_fs_log_enabled  = 1;
-static int g_hd_log_enabled  = 1;
 
 static volatile int g_fs_suppress = 0;
 static volatile int g_hd_suppress = 0;
 
-void log_mm_enable(int enable)  { g_mm_log_enabled  = (enable != 0); }
-void log_sys_enable(int enable) { g_sys_log_enabled = (enable != 0); }
-void log_fs_enable(int enable)  { g_fs_log_enabled  = (enable != 0); }
-void log_hd_enable(int enable)  { g_hd_log_enabled  = (enable != 0); }
 
 // 抑制日志，防止进入循环
 static void suppress_begin(int set_fs, int set_hd, volatile int* self_flag)
@@ -446,7 +432,7 @@ void log_sys_event(int msgtype, int src, int val)
     char line[SYS_LOG_LINE_MAX];
     int n;
 
-    if (!g_sys_log_enabled) return;
+    if (!SYS_LOG_ENABLE) return;
 
     get_rtc_time_log(&t);
 
@@ -474,7 +460,7 @@ void log_mm_event(int msgtype, int src, int val)
     char line[MM_LOG_LINE_MAX];
     int n;
 
-    if (!g_mm_log_enabled) return;
+    if (!MM_LOG_ENABLE) return;
 
     get_rtc_time_log(&t);
 
@@ -502,7 +488,7 @@ void log_fs_event(int msgtype, int src, int val)
     char line[FS_LOG_LINE_MAX];
     int n;
 
-    if (!g_fs_log_enabled) return;
+    if (!FS_LOG_ENABLE) return;
     if (g_fs_suppress) return;
 
     get_rtc_time_log(&t);
@@ -531,7 +517,7 @@ void log_hd_event(int msgtype, int src, int dev, int val)
     char line[HD_LOG_LINE_MAX];
     int n;
 
-    if (!g_hd_log_enabled) return;
+    if (!HD_LOG_ENABLE) return;
     if (g_hd_suppress) return;
 
     get_rtc_time_log(&t);
@@ -569,12 +555,10 @@ void log_sys_flush(void)
 
 void log_fs_flush(void)
 {
-    /* 保持你原来语义：flush期间屏蔽FS自身事件 */
     flush_common(&g_fs_rb, FS_LOG_PATH, FS_LOG_MAX_FILE, 0, 0, &g_fs_suppress);
 }
 
 void log_hd_flush(void)
 {
-    /* 保持你原来语义：flush期间屏蔽HD自身事件 */
     flush_common(&g_hd_rb, HD_LOG_PATH, HD_LOG_MAX_FILE, 0, 0, &g_hd_suppress);
 }

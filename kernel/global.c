@@ -32,7 +32,7 @@ PUBLIC	struct task	task_table[NR_TASKS] = {
 	{task_hd,       STACK_SIZE_HD,    "HD"        },
 	{task_fs,       STACK_SIZE_FS,    "FS"        },
 	{task_mm,       STACK_SIZE_MM,    "MM"        },
-	{task_log,      STACK_SIZE_LOG,   "LOG"		  }   /* ✅ 新增 */
+	{task_log,      STACK_SIZE_LOG,   "LOG"		  }   /* 新增 */
 };
 
 PUBLIC	struct task	user_proc_table[NR_NATIVE_PROCS] = {
