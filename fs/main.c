@@ -201,9 +201,11 @@ PRIVATE void init_fs()
 	RD_SECT(ROOT_DEV, 1);
 
 	sb = (struct super_block *)fsbuf;
-	if (sb->magic != MAGIC_V1) {
-		printl("{FS} mkfs\n");
-		mkfs(); /* make FS */
+	if (sb->magic != MAGIC_V1 || sb->inode_size != INODE_SIZE)
+	{
+		printl("{FS} mkfs (magic=0x%x inode_size=%d expect=%d)\n",
+			   sb->magic, sb->inode_size, INODE_SIZE);
+		mkfs();
 	}
 
 	/* load super block of ROOT */
