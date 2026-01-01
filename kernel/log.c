@@ -520,6 +520,8 @@ void log_hd_event(int msgtype, int src, int dev, int val)
     if (!HD_LOG_ENABLE) return;
     if (g_hd_suppress) return;
 
+    dev = (dev > 256) ? (dev & 0xFF) : (dev & 0xF);
+
     get_rtc_time_log(&t);
 
     if (val == -1) {
