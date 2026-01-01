@@ -74,6 +74,12 @@ PUBLIC void task_fs()
 			fs_msg.RETVAL = do_get_checksum();
 			log_fs_event(msgtype, src, fs_msg.RETVAL);
 			break;
+		case CALC_CHECKSUM:
+			fs_msg.RETVAL = do_calc_checksum();
+			break;
+		case VERIFY_CHECKSUM:
+			fs_msg.RETVAL = do_verify_checksum();
+			break;
 		case RESUME_PROC:
 			log_fs_event(msgtype, src, fs_msg.PROC_NR);
 			src = fs_msg.PROC_NR;
@@ -120,6 +126,8 @@ PUBLIC void task_fs()
 		msg_name[SET_CHECKSUM] = "SET_CHECKSUM";
 		msg_name[GET_CHECKSUM] = "GET_CHECKSUM";
 		msg_name[TRUNCATE] = "TRUNCATE";
+		msg_name[CALC_CHECKSUM] = "CALC_CHECKSUM";
+		msg_name[VERIFY_CHECKSUM] = "VERIFY_CHECKSUM";
 
 		switch (msgtype) {
 		case UNLINK:
@@ -140,6 +148,8 @@ PUBLIC void task_fs()
 			break;
 		case SET_CHECKSUM:
 		case GET_CHECKSUM:
+		case CALC_CHECKSUM:
+		case VERIFY_CHECKSUM:
 			break;
 		default:
 			assert(0);
@@ -541,7 +551,7 @@ PUBLIC struct inode * get_inode(int dev, int num)
 	q->i_start_sect = pinode->i_start_sect;
 	q->i_nr_sects = pinode->i_nr_sects;
 	memcpy(q->md5_checksum, pinode->md5_checksum, MD5_HASH_LEN);
-	q->checksum_key = pinode->checksum_key;
+	q->checksum_key = 0; /* key no longer stored on disk */
 	return q;
 }
 
@@ -586,7 +596,7 @@ PUBLIC void put_inode(struct inode * pinode)
 	pinode->i_start_sect = p->i_start_sect;
 	pinode->i_nr_sects = p->i_nr_sects;
 	memcpy(pinode->md5_checksum, p->md5_checksum, MD5_HASH_LEN);
-	pinode->checksum_key = p->checksum_key;
+	pinode->checksum_key = 0; /* never persist key */
 	WR_SECT(p->i_dev, blk_nr);
 }
 

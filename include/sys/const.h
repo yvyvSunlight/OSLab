@@ -171,7 +171,7 @@ enum msgtype {
 	GET_TICKS, GET_PID, GET_RTC_TIME, GET_PROCS, CLEAR_SCREEN,
 
 	/* FS */
-	OPEN, CLOSE, READ, WRITE, LSEEK, STAT, UNLINK, SET_CHECKSUM, GET_CHECKSUM, TRUNCATE,
+	OPEN, CLOSE, READ, WRITE, LSEEK, STAT, UNLINK, SET_CHECKSUM, GET_CHECKSUM, CALC_CHECKSUM, VERIFY_CHECKSUM, TRUNCATE,
 
 	/* FS & TTY */
 	SUSPEND_PROC, RESUME_PROC,
@@ -195,7 +195,6 @@ enum msgtype {
 };
 
 #define	CHECKSUM	u.m3.m3i3
-#define	CHECKSUM_KEY	u.m3.m3l2	/* u32 key for MD5 checksum, stored in u64 field */
 /* macros for messages */
 #define	FD		u.m3.m3i1
 #define	PATHNAME	u.m3.m3p1

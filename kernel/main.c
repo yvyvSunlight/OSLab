@@ -208,9 +208,6 @@ void untar(const char * filename)
 	int fd = open(filename, O_RDWR);
 	assert(fd != -1);
 
-	// 初始化时间戳模块
-	init_timestamp();
-
 	// 缓冲区，16个扇区
 	char buf[SECTOR_SIZE * 16];
 	int chunk = sizeof(buf);
@@ -262,21 +259,18 @@ void untar(const char * filename)
 			bytes_left -= iobytes;
 		}
 		
-		// 计算MD5校验值并写入inode（基于落盘后的文件描述符）
+		close(fdout);
+
+		// 计算MD5校验值（由FS内部持有key）并写入inode
 		if (need_checksum) {
-			u32 key = generate_checksum_key();
 			char md5_str[MD5_STR_BUF_LEN];
-			int md5_ret = compute_md5_with_key_fd(fdout, (u32)f_len, key, md5_str);
-			if (md5_ret == 0) {
-				int ret = set_checksum(name_bak, md5_str, key);
-				if (ret != 0)
+			if (calc_checksum(name_bak, md5_str) == 0) {
+				if (set_checksum(name_bak, md5_str) != 0)
 					printf("    [MD5 set failed] for %s\n", name_bak);
 			} else {
 				printf("    [MD5 calc failed] for %s\n", name_bak);
 			}
 		}
-
-		close(fdout);
 	}
 
 	if (i) {
@@ -345,29 +339,11 @@ void shabby_shell(const char * tty_name)
 
 		int need_checksum = !should_skip_checksum(argv[0]);
 		if (need_checksum) {
-			char stored_md5[MD5_STR_BUF_LEN];
-			u32 stored_key = 0;
-			struct stat file_stat;
-			int verified = 0;
-
-			if (stat(argv[0], &file_stat) == 0 &&
-			    get_checksum(argv[0], stored_md5, &stored_key) == 0) {
-				int fdfile = open(argv[0], O_RDONLY);
-				if (fdfile != -1) {
-					char md5_str[MD5_STR_BUF_LEN];
-					if (compute_md5_with_key_fd(fdfile, (u32)file_stat.st_size, stored_key, md5_str) == 0 &&
-					    compare_md5_strings(md5_str, stored_md5) == 0) {
-						verified = 1;
-						printf("[MD5 checksum ok] %s\n", argv[0]);
-					}
-					close(fdfile);
-				}
-			}
-
-			if (!verified) {
+			if (verify_checksum(argv[0]) != 0) {
 				printf("[MD5 checksum failed] %s\n", argv[0]);
 				continue;
 			}
+			printf("[MD5 checksum ok] %s\n", argv[0]);
 		}
 
 		int pid = fork();

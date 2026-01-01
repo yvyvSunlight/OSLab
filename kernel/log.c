@@ -301,6 +301,8 @@ static const char* fs_type_name(int msgtype)
     case TRUNCATE: return "TRUNCATE";
     case SET_CHECKSUM: return "SET_CHECKSUM";
     case GET_CHECKSUM: return "GET_CHECKSUM";
+    case CALC_CHECKSUM: return "CALC_CHECKSUM";
+    case VERIFY_CHECKSUM: return "VERIFY_CHECKSUM";
     default:     return "UNKNOWN";
     }
 }

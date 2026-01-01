@@ -102,6 +102,8 @@ PUBLIC int		strip_path(char * filename, const char * pathname,
 PUBLIC int		search_file(char * path);
 PUBLIC int		do_set_checksum();
 PUBLIC int		do_get_checksum();
+PUBLIC int		do_calc_checksum();
+PUBLIC int		do_verify_checksum();
 
 /* fs/disklog.c */
 PUBLIC int		do_disklog();
@@ -154,8 +156,6 @@ PUBLIC u32  get_timestamp();
 PUBLIC u32  generate_checksum_key();
 
 /* kernel/filecheck.c */
-PUBLIC void compute_md5_with_key(u8 *data, u32 data_len, u32 key, char *result);
-PUBLIC int  verify_md5_with_key(u8 *data, u32 data_len, u32 key, const char *stored_md5);
 PUBLIC int  compare_md5_strings(const char *md5_1, const char *md5_2);
 PUBLIC int  compute_md5_with_key_fd(int fd, u32 data_len, u32 key, char *result);
 

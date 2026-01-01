@@ -317,40 +317,6 @@ PRIVATE void bytes_to_hex(u8 *bytes, int len, char *hex_str)
 }
 
 /*****************************************************************************
- *                                compute_md5_with_key
- *****************************************************************************/
-/**
- * 计算 MD5(key || data || key) 并输出32字符十六进制字符串
- * 
- * @param data      文件数据
- * @param data_len  数据长度
- * @param key       32位密钥
- * @param result    输出的33字节缓冲区（32字符 + '\0'）
- */
-PUBLIC void compute_md5_with_key(u8 *data, u32 data_len, u32 key, char *result)
-{
-    MD5_CTX ctx;
-    u8 digest[16];
-    u8 key_bytes[4];
-    
-    /* 将key转换为字节数组（小端序） */
-    key_bytes[0] = (u8)(key & 0xFF);
-    key_bytes[1] = (u8)((key >> 8) & 0xFF);
-    key_bytes[2] = (u8)((key >> 16) & 0xFF);
-    key_bytes[3] = (u8)((key >> 24) & 0xFF);
-    
-    /* 计算 MD5(key || data || key) */
-    md5_init(&ctx);
-    md5_update(&ctx, key_bytes, 4);     /* 前置 key */
-    md5_update(&ctx, data, data_len);   /* 文件数据 */
-    md5_update(&ctx, key_bytes, 4);     /* 后置 key */
-    md5_final(digest, &ctx);
-    
-    /* 转换为十六进制字符串 */
-    bytes_to_hex(digest, 16, result);
-}
-
-/*****************************************************************************
  *                       compute_md5_with_key_fd
  *****************************************************************************/
 /**
@@ -397,34 +363,6 @@ PUBLIC int compute_md5_with_key_fd(int fd, u32 data_len, u32 key, char *result)
     /* rewind 方便后续调用者复用 fd */
     lseek(fd, 0, SEEK_SET);
     return 0;
-}
-
-/*****************************************************************************
- *                                verify_md5_with_key
- *****************************************************************************/
-/**
- * 使用指定key验证文件的MD5校验和
- * 
- * @param data           文件数据
- * @param data_len       数据长度
- * @param key            用于计算的key
- * @param stored_md5     存储的MD5字符串
- * @return               1 如果匹配，0 如果不匹配
- */
-PUBLIC int verify_md5_with_key(u8 *data, u32 data_len, u32 key, const char *stored_md5)
-{
-    char computed_md5[33];
-    int i;
-    
-    compute_md5_with_key(data, data_len, key, computed_md5);
-    
-    /* 比较两个MD5字符串 */
-    for (i = 0; i < 32; i++) {
-        if (computed_md5[i] != stored_md5[i])
-            return 0;
-    }
-    
-    return 1;
 }
 
 /*****************************************************************************

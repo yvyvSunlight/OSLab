@@ -26,10 +26,9 @@
  * 
  * @param pathname   文件路径
  * @param md5_str    MD5十六进制字符串（32字符）
- * @param key        用于计算MD5的key
  * @return           0 成功，-1 失败
  */
-PUBLIC int set_checksum(const char *pathname, const char *md5_str, u32 key)
+PUBLIC int set_checksum(const char *pathname, const char *md5_str)
 {
     MESSAGE msg;
 
@@ -38,7 +37,6 @@ PUBLIC int set_checksum(const char *pathname, const char *md5_str, u32 key)
     msg.NAME_LEN = strlen(pathname);
     msg.BUF      = (void*)md5_str;      /* MD5字符串 */
     msg.BUF_LEN  = 32;                  /* MD5长度 */
-    msg.CHECKSUM_KEY = key;             /* 存储key */
 
     send_recv(BOTH, TASK_FS, &msg);
     assert(msg.type == SYSCALL_RET);
@@ -50,14 +48,13 @@ PUBLIC int set_checksum(const char *pathname, const char *md5_str, u32 key)
  *                                get_checksum
  *****************************************************************************/
 /**
- * 获取文件的MD5校验和及key
+ * 获取文件的MD5校验和
  * 
  * @param pathname   文件路径
  * @param md5_buf    输出缓冲区（至少33字节）
- * @param key_out    输出key指针
  * @return           0 成功，-1 失败
  */
-PUBLIC int get_checksum(const char *pathname, char *md5_buf, u32 *key_out)
+PUBLIC int get_checksum(const char *pathname, char *md5_buf)
 {
     MESSAGE msg;
 
@@ -70,9 +67,39 @@ PUBLIC int get_checksum(const char *pathname, char *md5_buf, u32 *key_out)
     send_recv(BOTH, TASK_FS, &msg);
     assert(msg.type == SYSCALL_RET);
 
-    if (msg.RETVAL == 0 && key_out != 0) {
-        *key_out = msg.CHECKSUM_KEY;
-    }
+    return msg.RETVAL;
+}
 
+/*****************************************************************************
+ *                                calc_checksum
+ *****************************************************************************/
+PUBLIC int calc_checksum(const char *pathname, char *md5_buf)
+{
+    MESSAGE msg;
+
+    msg.type     = CALC_CHECKSUM;
+    msg.PATHNAME = (void*)pathname;
+    msg.NAME_LEN = strlen(pathname);
+    msg.BUF      = (void*)md5_buf;
+    msg.BUF_LEN  = 33;
+
+    send_recv(BOTH, TASK_FS, &msg);
+    assert(msg.type == SYSCALL_RET);
+    return msg.RETVAL;
+}
+
+/*****************************************************************************
+ *                                verify_checksum
+ *****************************************************************************/
+PUBLIC int verify_checksum(const char *pathname)
+{
+    MESSAGE msg;
+
+    msg.type     = VERIFY_CHECKSUM;
+    msg.PATHNAME = (void*)pathname;
+    msg.NAME_LEN = strlen(pathname);
+
+    send_recv(BOTH, TASK_FS, &msg);
+    assert(msg.type == SYSCALL_RET);
     return msg.RETVAL;
 }
