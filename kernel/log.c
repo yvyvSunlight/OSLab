@@ -1,11 +1,19 @@
 /*
-@Author  : Ramoor (modified)
+@Author  : Ramoor (modified, refactored)
 @Date    : 2026-01-01
 @Fixes   :
-  1) log_lock/log_unlock -> irqsave/irqrestore (nest-safe)
+  1) log_lock/log_unlock -> nest-safe
   2) flush期间抑制FS/HD日志，避免日志风暴/活锁/环路等待放大
   3) 日志文件大小上限 + rotate(unlink重建)
   4) write返回值检查（write_all）
+@Refactor:
+  - 统一 ring buffer 逻辑（ringbuf_t + ring_push/pop）
+  - 统一 flush 模板（flush_common）
+  - 统一 suppress 开关（suppress_begin/end）
+@Bugfix (KEEP FEATURES):
+  - 当文件系统“真实单文件上限”小于 FS_LOG_MAX_FILE 时，fs.log 会先写满导致 write 失败，
+    但 size 仍达不到阈值，rotate 永不触发 -> “满了不刷新”
+  - 解决：write 失败时也触发 rotate（异常路径），正常路径不变
 */
 
 #include "type.h"
@@ -41,19 +49,17 @@
 #define FS_LOG_LINE_MAX  192
 #define HD_LOG_LINE_MAX  192
 
-/* ---------------- file max (rotate) ----------------
- * 你可以按需调整。教学OS建议别太大，避免inode/块限制触发写失败。
- */
+/* ---------------- file max (rotate) ---------------- */
 #define MM_LOG_MAX_FILE   (64 * 1024)
 #define SYS_LOG_MAX_FILE  (64 * 1024)
 #define FS_LOG_MAX_FILE   (64 * 1024)
 #define HD_LOG_MAX_FILE   (64 * 1024)
 
 /* 是否把日志同时printl到控制台（IO重时建议关掉） */
-#define LOG_ECHO_CONSOLE  1
+#define LOG_ECHO_CONSOLE  0
 
 /* =========================================================
- *  IRQ save/restore (nest-safe)  —— 关键修复
+ *  IRQ save/restore (nest-safe)
  * ========================================================= */
 #define EFLAGS_IF 0x200
 
@@ -64,7 +70,6 @@ static inline u32 read_eflags(void)
     return f;
 }
 
-/* 单核：用关中断保护临界区，但必须支持嵌套，且恢复原IF状态 */
 static int g_log_nest = 0;
 static int g_log_prev_if = 0;
 
@@ -86,14 +91,13 @@ static void log_unlock(void)
 }
 
 /* =========================================================
- * RTC
+ * enable / suppress
  * ========================================================= */
 static int g_mm_log_enabled  = 1;
 static int g_sys_log_enabled = 1;
 static int g_fs_log_enabled  = 1;
 static int g_hd_log_enabled  = 1;
 
-/* flush期间屏蔽：避免写日志触发自身/风暴 */
 static volatile int g_fs_suppress = 0;
 static volatile int g_hd_suppress = 0;
 
@@ -102,6 +106,27 @@ void log_sys_enable(int enable) { g_sys_log_enabled = (enable != 0); }
 void log_fs_enable(int enable)  { g_fs_log_enabled  = (enable != 0); }
 void log_hd_enable(int enable)  { g_hd_log_enabled  = (enable != 0); }
 
+static void suppress_begin(int set_fs, int set_hd, volatile int* self_flag)
+{
+    log_lock();
+    if (self_flag) *self_flag = 1;
+    if (set_fs) g_fs_suppress = 1;
+    if (set_hd) g_hd_suppress = 1;
+    log_unlock();
+}
+
+static void suppress_end(int set_fs, int set_hd, volatile int* self_flag)
+{
+    log_lock();
+    if (self_flag) *self_flag = 0;
+    if (set_fs) g_fs_suppress = 0;
+    if (set_hd) g_hd_suppress = 0;
+    log_unlock();
+}
+
+/* =========================================================
+ * RTC（按你原来的实现保留：清晰、简单）
+ * ========================================================= */
 static int read_register_log(char reg_addr)
 {
     out_byte(CLK_ELE, reg_addr);
@@ -130,299 +155,113 @@ static int get_rtc_time_log(struct time *t)
 }
 
 /* =========================================================
- * ring helpers
+ * ring buffer (统一实现)
  * ========================================================= */
-static int ring_used_nolock(int head, int tail, int size)
+typedef struct ringbuf {
+    char* buf;
+    int   size;
+    int   head;
+    int   tail;
+} ringbuf_t;
+
+static int ring_used_nolock(const ringbuf_t* r)
 {
-    return (head >= tail) ? (head - tail) : (size - (tail - head));
+    return (r->head >= r->tail) ? (r->head - r->tail) : (r->size - (r->tail - r->head));
 }
-static int ring_free_nolock(int head, int tail, int size)
+
+static int ring_free_nolock(const ringbuf_t* r)
 {
-    return size - ring_used_nolock(head, tail, size) - 1; /* 留1字节区分空/满 */
+    return r->size - ring_used_nolock(r) - 1;
 }
-static void ring_drop_oldest(int *tail, int bytes, int size)
+
+static void ring_drop_oldest_nolock(ringbuf_t* r, int bytes)
 {
     while (bytes-- > 0) {
-        (*tail)++;
-        if (*tail >= size) *tail = 0;
+        r->tail++;
+        if (r->tail >= r->size) r->tail = 0;
     }
 }
 
-/* =========================================================
- * MM ring
- * ========================================================= */
+static void ring_push(ringbuf_t* r, const char* s, int len)
+{
+    if (!r || !s || len <= 0) return;
+
+    log_lock();
+
+    if (len >= r->size) {
+        s   += (len - (r->size - 1));
+        len  = r->size - 1;
+        r->head = r->tail = 0;
+    }
+
+    {
+        int free = ring_free_nolock(r);
+        if (free < len) ring_drop_oldest_nolock(r, len - free);
+    }
+
+    {
+        int first = r->size - r->head;
+        if (first > len) first = len;
+
+        memcpy(r->buf + r->head, (void*)s, first);
+        r->head += first;
+        if (r->head >= r->size) r->head = 0;
+
+        {
+            int left = len - first;
+            if (left > 0) {
+                memcpy(r->buf + r->head, (void*)(s + first), left);
+                r->head += left;
+                if (r->head >= r->size) r->head = 0;
+            }
+        }
+    }
+
+    log_unlock();
+}
+
+static int ring_pop(ringbuf_t* r, char* out, int maxlen)
+{
+    int used, n, cont, left;
+
+    if (!r || !out || maxlen <= 0) return 0;
+
+    log_lock();
+
+    used = ring_used_nolock(r);
+    if (used <= 0) { log_unlock(); return 0; }
+
+    n = used;
+    if (n > maxlen) n = maxlen;
+
+    cont = (r->head >= r->tail) ? (r->head - r->tail) : (r->size - r->tail);
+    if (cont > n) cont = n;
+
+    memcpy(out, r->buf + r->tail, cont);
+    r->tail += cont;
+    if (r->tail >= r->size) r->tail = 0;
+
+    left = n - cont;
+    if (left > 0) {
+        memcpy(out + cont, r->buf + r->tail, left);
+        r->tail += left;
+        if (r->tail >= r->size) r->tail = 0;
+    }
+
+    log_unlock();
+    return n;
+}
+
+/* 实例化四个 ring */
 static char g_mm_ring[MM_RING_SIZE];
-static int  g_mm_head = 0;
-static int  g_mm_tail = 0;
-
-static void mm_ring_push(const char* s, int len)
-{
-    if (!s || len <= 0) return;
-
-    log_lock();
-
-    if (len >= MM_RING_SIZE) {
-        s   += (len - (MM_RING_SIZE - 1));
-        len  = MM_RING_SIZE - 1;
-        g_mm_head = g_mm_tail = 0;
-    }
-
-    int free = ring_free_nolock(g_mm_head, g_mm_tail, MM_RING_SIZE);
-    if (free < len) ring_drop_oldest(&g_mm_tail, len - free, MM_RING_SIZE);
-
-    int first = MM_RING_SIZE - g_mm_head;
-    if (first > len) first = len;
-    memcpy(g_mm_ring + g_mm_head, (void*)s, first);
-    g_mm_head += first;
-    if (g_mm_head >= MM_RING_SIZE) g_mm_head = 0;
-
-    int left = len - first;
-    if (left > 0) {
-        memcpy(g_mm_ring + g_mm_head, (void*)(s + first), left);
-        g_mm_head += left;
-        if (g_mm_head >= MM_RING_SIZE) g_mm_head = 0;
-    }
-
-    log_unlock();
-}
-
-static int mm_ring_pop(char* out, int maxlen)
-{
-    if (!out || maxlen <= 0) return 0;
-
-    log_lock();
-
-    int used = ring_used_nolock(g_mm_head, g_mm_tail, MM_RING_SIZE);
-    if (used <= 0) { log_unlock(); return 0; }
-
-    int n = used;
-    if (n > maxlen) n = maxlen;
-
-    int cont = (g_mm_head >= g_mm_tail) ? (g_mm_head - g_mm_tail)
-                                        : (MM_RING_SIZE - g_mm_tail);
-    if (cont > n) cont = n;
-
-    memcpy(out, g_mm_ring + g_mm_tail, cont);
-    g_mm_tail += cont;
-    if (g_mm_tail >= MM_RING_SIZE) g_mm_tail = 0;
-
-    int left = n - cont;
-    if (left > 0) {
-        memcpy(out + cont, g_mm_ring + g_mm_tail, left);
-        g_mm_tail += left;
-        if (g_mm_tail >= MM_RING_SIZE) g_mm_tail = 0;
-    }
-
-    log_unlock();
-    return n;
-}
-
-/* =========================================================
- * SYS ring
- * ========================================================= */
 static char g_sys_ring[SYS_RING_SIZE];
-static int  g_sys_head = 0;
-static int  g_sys_tail = 0;
-
-static void sys_ring_push(const char* s, int len)
-{
-    if (!s || len <= 0) return;
-
-    log_lock();
-
-    if (len >= SYS_RING_SIZE) {
-        s   += (len - (SYS_RING_SIZE - 1));
-        len  = SYS_RING_SIZE - 1;
-        g_sys_head = g_sys_tail = 0;
-    }
-
-    int free = ring_free_nolock(g_sys_head, g_sys_tail, SYS_RING_SIZE);
-    if (free < len) ring_drop_oldest(&g_sys_tail, len - free, SYS_RING_SIZE);
-
-    int first = SYS_RING_SIZE - g_sys_head;
-    if (first > len) first = len;
-    memcpy(g_sys_ring + g_sys_head, (void*)s, first);
-    g_sys_head += first;
-    if (g_sys_head >= SYS_RING_SIZE) g_sys_head = 0;
-
-    int left = len - first;
-    if (left > 0) {
-        memcpy(g_sys_ring + g_sys_head, (void*)(s + first), left);
-        g_sys_head += left;
-        if (g_sys_head >= SYS_RING_SIZE) g_sys_head = 0;
-    }
-
-    log_unlock();
-}
-
-static int sys_ring_pop(char* out, int maxlen)
-{
-    if (!out || maxlen <= 0) return 0;
-
-    log_lock();
-
-    int used = ring_used_nolock(g_sys_head, g_sys_tail, SYS_RING_SIZE);
-    if (used <= 0) { log_unlock(); return 0; }
-
-    int n = used;
-    if (n > maxlen) n = maxlen;
-
-    int cont = (g_sys_head >= g_sys_tail) ? (g_sys_head - g_sys_tail)
-                                          : (SYS_RING_SIZE - g_sys_tail);
-    if (cont > n) cont = n;
-
-    memcpy(out, g_sys_ring + g_sys_tail, cont);
-    g_sys_tail += cont;
-    if (g_sys_tail >= SYS_RING_SIZE) g_sys_tail = 0;
-
-    int left = n - cont;
-    if (left > 0) {
-        memcpy(out + cont, g_sys_ring + g_sys_tail, left);
-        g_sys_tail += left;
-        if (g_sys_tail >= SYS_RING_SIZE) g_sys_tail = 0;
-    }
-
-    log_unlock();
-    return n;
-}
-
-/* =========================================================
- * FS ring
- * ========================================================= */
 static char g_fs_ring[FS_RING_SIZE];
-static int  g_fs_head = 0;
-static int  g_fs_tail = 0;
-
-static void fs_ring_push(const char* s, int len)
-{
-    if (!s || len <= 0) return;
-
-    log_lock();
-
-    if (len >= FS_RING_SIZE) {
-        s   += (len - (FS_RING_SIZE - 1));
-        len  = FS_RING_SIZE - 1;
-        g_fs_head = g_fs_tail = 0;
-    }
-
-    int free = ring_free_nolock(g_fs_head, g_fs_tail, FS_RING_SIZE);
-    if (free < len) ring_drop_oldest(&g_fs_tail, len - free, FS_RING_SIZE);
-
-    int first = FS_RING_SIZE - g_fs_head;
-    if (first > len) first = len;
-    memcpy(g_fs_ring + g_fs_head, (void*)s, first);
-    g_fs_head += first;
-    if (g_fs_head >= FS_RING_SIZE) g_fs_head = 0;
-
-    int left = len - first;
-    if (left > 0) {
-        memcpy(g_fs_ring + g_fs_head, (void*)(s + first), left);
-        g_fs_head += left;
-        if (g_fs_head >= FS_RING_SIZE) g_fs_head = 0;
-    }
-
-    log_unlock();
-}
-
-static int fs_ring_pop(char* out, int maxlen)
-{
-    if (!out || maxlen <= 0) return 0;
-
-    log_lock();
-
-    int used = ring_used_nolock(g_fs_head, g_fs_tail, FS_RING_SIZE);
-    if (used <= 0) { log_unlock(); return 0; }
-
-    int n = used;
-    if (n > maxlen) n = maxlen;
-
-    int cont = (g_fs_head >= g_fs_tail) ? (g_fs_head - g_fs_tail)
-                                        : (FS_RING_SIZE - g_fs_tail);
-    if (cont > n) cont = n;
-
-    memcpy(out, g_fs_ring + g_fs_tail, cont);
-    g_fs_tail += cont;
-    if (g_fs_tail >= FS_RING_SIZE) g_fs_tail = 0;
-
-    int left = n - cont;
-    if (left > 0) {
-        memcpy(out + cont, g_fs_ring + g_fs_tail, left);
-        g_fs_tail += left;
-        if (g_fs_tail >= FS_RING_SIZE) g_fs_tail = 0;
-    }
-
-    log_unlock();
-    return n;
-}
-
-/* =========================================================
- * HD ring
- * ========================================================= */
 static char g_hd_ring[HD_RING_SIZE];
-static int  g_hd_head = 0;
-static int  g_hd_tail = 0;
 
-static void hd_ring_push(const char* s, int len)
-{
-    if (!s || len <= 0) return;
-
-    log_lock();
-
-    if (len >= HD_RING_SIZE) {
-        s   += (len - (HD_RING_SIZE - 1));
-        len  = HD_RING_SIZE - 1;
-        g_hd_head = g_hd_tail = 0;
-    }
-
-    int free = ring_free_nolock(g_hd_head, g_hd_tail, HD_RING_SIZE);
-    if (free < len) ring_drop_oldest(&g_hd_tail, len - free, HD_RING_SIZE);
-
-    int first = HD_RING_SIZE - g_hd_head;
-    if (first > len) first = len;
-    memcpy(g_hd_ring + g_hd_head, (void*)s, first);
-    g_hd_head += first;
-    if (g_hd_head >= HD_RING_SIZE) g_hd_head = 0;
-
-    int left = len - first;
-    if (left > 0) {
-        memcpy(g_hd_ring + g_hd_head, (void*)(s + first), left);
-        g_hd_head += left;
-        if (g_hd_head >= HD_RING_SIZE) g_hd_head = 0;
-    }
-
-    log_unlock();
-}
-
-static int hd_ring_pop(char* out, int maxlen)
-{
-    if (!out || maxlen <= 0) return 0;
-
-    log_lock();
-
-    int used = ring_used_nolock(g_hd_head, g_hd_tail, HD_RING_SIZE);
-    if (used <= 0) { log_unlock(); return 0; }
-
-    int n = used;
-    if (n > maxlen) n = maxlen;
-
-    int cont = (g_hd_head >= g_hd_tail) ? (g_hd_head - g_hd_tail)
-                                        : (HD_RING_SIZE - g_hd_tail);
-    if (cont > n) cont = n;
-
-    memcpy(out, g_hd_ring + g_hd_tail, cont);
-    g_hd_tail += cont;
-    if (g_hd_tail >= HD_RING_SIZE) g_hd_tail = 0;
-
-    int left = n - cont;
-    if (left > 0) {
-        memcpy(out + cont, g_hd_ring + g_hd_tail, left);
-        g_hd_tail += left;
-        if (g_hd_tail >= HD_RING_SIZE) g_hd_tail = 0;
-    }
-
-    log_unlock();
-    return n;
-}
+static ringbuf_t g_mm_rb  = { g_mm_ring,  MM_RING_SIZE,  0, 0 };
+static ringbuf_t g_sys_rb = { g_sys_ring, SYS_RING_SIZE, 0, 0 };
+static ringbuf_t g_fs_rb  = { g_fs_ring,  FS_RING_SIZE,  0, 0 };
+static ringbuf_t g_hd_rb  = { g_hd_ring,  HD_RING_SIZE,  0, 0 };
 
 /* =========================================================
  * name helpers
@@ -483,9 +322,30 @@ static const char* hd_type_name(int msgtype)
 }
 
 /* =========================================================
- * IO helpers: open+rotate, write_all
+ * IO helpers
  * ========================================================= */
-static void write_all(int fd, const char* buf, int n)
+static int open_append_rotate(const char* path, int max_bytes)
+{
+    int fd = open(path, O_RDWR);
+    if (fd < 0) fd = open(path, O_CREAT | O_RDWR);
+    if (fd < 0) return -1;
+
+    {
+        int sz = lseek(fd, 0, SEEK_END);
+        if (sz < 0) sz = 0;
+
+        if (sz >= max_bytes) {
+            close(fd);
+            unlink(path);
+            fd = open(path, O_CREAT | O_RDWR);
+            if (fd < 0) return -1;
+        }
+    }
+    return fd;
+}
+
+/* 普通写：尽量写完，返回写入的字节数 */
+static int write_all_once(int fd, const char* buf, int n)
 {
     int off = 0;
     while (off < n) {
@@ -493,30 +353,82 @@ static void write_all(int fd, const char* buf, int n)
         if (w <= 0) break;
         off += w;
     }
+    return off;
 }
 
-/* 以追加方式打开；若文件>=max_bytes则rotate（unlink重建） */
-static int open_append_rotate(const char* path, int max_bytes)
+/*
+ * 关键补丁：write失败也rotate（异常路径）
+ * - 用于处理“真实文件最大尺寸 < 你设置的 max_file”的情况
+ * - 正常写成功时行为完全不变
+ */
+static void write_all_may_rotate(int* pfd, const char* path, int max_file,
+                                const char* buf, int n)
 {
-    int fd = open(path, O_RDWR);
-    if (fd < 0) fd = open(path, O_CREAT | O_RDWR);
-    if (fd < 0) return -1;
+    int off = 0;
+    int rotated = 0;
 
-    int sz = lseek(fd, 0, SEEK_END);
-    if (sz < 0) sz = 0;
+    if (!pfd || *pfd < 0 || !buf || n <= 0) return;
 
-    if (sz >= max_bytes) {
-        close(fd);
-        /* rotate：删掉重建（比依赖O_TRUNC更通用） */
+    while (off < n) {
+        int w = write(*pfd, buf + off, n - off);
+        if (w > 0) {
+            off += w;
+            rotated = 0; /* 有进展，允许下次再rotate */
+            continue;
+        }
+
+        /* write失败：尝试rotate一次 */
+        if (rotated) break; /* rotate也没用，避免死循环 */
+
+        close(*pfd);
         unlink(path);
-        fd = open(path, O_CREAT | O_RDWR);
-        if (fd < 0) return -1;
-        /* 新文件从0开始写即可 */
-    } else {
-        /* 已经在末尾 */
+        *pfd = open(path, O_CREAT | O_RDWR);
+        if (*pfd < 0) break;
+
+        /* rotate后也可能需要再定位到末尾（新文件默认在0，无需lseek） */
+        rotated = 1;
     }
 
-    return fd;
+    (void)max_file; /* 保留参数，不改变原功能接口/语义（rotate阈值仍在open阶段生效） */
+}
+
+/* =========================================================
+ * flush common（统一模板）
+ * ========================================================= */
+static void flush_common(ringbuf_t* rb, const char* path, int max_file,
+                         int suppress_fs, int suppress_hd,
+                         volatile int* self_flag_to_set)
+{
+    char tmp[512];
+    int n;
+
+    n = ring_pop(rb, tmp, sizeof(tmp));
+    if (n <= 0) return;
+
+    suppress_begin(suppress_fs, suppress_hd, self_flag_to_set);
+
+    {
+        int fd = open_append_rotate(path, max_file);
+        if (fd >= 0) {
+            /* 先正常写；若写失败则异常路径rotate并继续 */
+            int wrote = write_all_once(fd, tmp, n);
+            if (wrote < n) {
+                /* 让“满了不刷新”的情况能恢复写入 */
+                write_all_may_rotate(&fd, path, max_file, tmp + wrote, n - wrote);
+            }
+
+            while ((n = ring_pop(rb, tmp, sizeof(tmp))) > 0) {
+                wrote = write_all_once(fd, tmp, n);
+                if (wrote < n) {
+                    write_all_may_rotate(&fd, path, max_file, tmp + wrote, n - wrote);
+                    /* rotate后仍可能失败，继续下一块避免卡死 */
+                }
+            }
+            close(fd);
+        }
+    }
+
+    suppress_end(suppress_fs, suppress_hd, self_flag_to_set);
 }
 
 /* =========================================================
@@ -524,13 +436,13 @@ static int open_append_rotate(const char* path, int max_bytes)
  * ========================================================= */
 void log_sys_event(int msgtype, int src, int val)
 {
-    if (!g_sys_log_enabled) return;
-
     struct time t;
-    get_rtc_time_log(&t);
-
     char line[SYS_LOG_LINE_MAX];
     int n;
+
+    if (!g_sys_log_enabled) return;
+
+    get_rtc_time_log(&t);
 
     if (val == -1) {
         n = sprintf(line,
@@ -547,18 +459,18 @@ void log_sys_event(int msgtype, int src, int val)
 #if LOG_ECHO_CONSOLE
     printl("%s", line);
 #endif
-    sys_ring_push(line, n);
+    ring_push(&g_sys_rb, line, n);
 }
 
 void log_mm_event(int msgtype, int src, int val)
 {
-    if (!g_mm_log_enabled) return;
-
     struct time t;
-    get_rtc_time_log(&t);
-
     char line[MM_LOG_LINE_MAX];
     int n;
+
+    if (!g_mm_log_enabled) return;
+
+    get_rtc_time_log(&t);
 
     if (val == -1) {
         n = sprintf(line,
@@ -575,21 +487,19 @@ void log_mm_event(int msgtype, int src, int val)
 #if LOG_ECHO_CONSOLE
     printl("%s", line);
 #endif
-    mm_ring_push(line, n);
-
-    /* 关键：event路径绝不触发open/write/flush */
+    ring_push(&g_mm_rb, line, n);
 }
 
 void log_fs_event(int msgtype, int src, int val)
 {
+    struct time t;
+    char line[FS_LOG_LINE_MAX];
+    int n;
+
     if (!g_fs_log_enabled) return;
     if (g_fs_suppress) return;
 
-    struct time t;
     get_rtc_time_log(&t);
-
-    char line[FS_LOG_LINE_MAX];
-    int n;
 
     if (val == -1) {
         n = sprintf(line,
@@ -606,19 +516,19 @@ void log_fs_event(int msgtype, int src, int val)
 #if LOG_ECHO_CONSOLE
     printl("%s", line);
 #endif
-    fs_ring_push(line, n);
+    ring_push(&g_fs_rb, line, n);
 }
 
 void log_hd_event(int msgtype, int src, int dev, int val)
 {
+    struct time t;
+    char line[HD_LOG_LINE_MAX];
+    int n;
+
     if (!g_hd_log_enabled) return;
     if (g_hd_suppress) return;
 
-    struct time t;
     get_rtc_time_log(&t);
-
-    char line[HD_LOG_LINE_MAX];
-    int n;
 
     if (val == -1) {
         n = sprintf(line,
@@ -635,95 +545,30 @@ void log_hd_event(int msgtype, int src, int dev, int val)
 #if LOG_ECHO_CONSOLE
     printl("%s", line);
 #endif
-    hd_ring_push(line, n);
+    ring_push(&g_hd_rb, line, n);
 }
 
 /* =========================================================
- * flush APIs: 由 TASK_LOG 调用落盘
- * 关键点：
- *  - flush中绝不持有log_lock做IO
- *  - flush时抑制FS/HD日志（写文件必然触发FS/HD事件）
- *  - 文件达到上限就rotate
+ * flush APIs: 接口保持不变
  * ========================================================= */
 void log_mm_flush(void)
 {
-    char tmp[512];
-    int n = mm_ring_pop(tmp, sizeof(tmp));
-    if (n <= 0) return;
-
-    /* 抑制FS/HD：写mm.log会触发FS/HD事件，容易引发日志风暴 */
-    log_lock(); g_fs_suppress = 1; g_hd_suppress = 1; log_unlock();
-
-    int fd = open_append_rotate(MM_LOG_PATH, MM_LOG_MAX_FILE);
-    if (fd >= 0) {
-        write_all(fd, tmp, n);
-        while ((n = mm_ring_pop(tmp, sizeof(tmp))) > 0) {
-            write_all(fd, tmp, n);
-        }
-        close(fd);
-    }
-
-    log_lock(); g_fs_suppress = 0; g_hd_suppress = 0; log_unlock();
+    flush_common(&g_mm_rb, MM_LOG_PATH, MM_LOG_MAX_FILE, 1, 1, 0);
 }
 
 void log_sys_flush(void)
 {
-    char tmp[512];
-    int n = sys_ring_pop(tmp, sizeof(tmp));
-    if (n <= 0) return;
-
-    log_lock(); g_fs_suppress = 1; g_hd_suppress = 1; log_unlock();
-
-    int fd = open_append_rotate(SYS_LOG_PATH, SYS_LOG_MAX_FILE);
-    if (fd >= 0) {
-        write_all(fd, tmp, n);
-        while ((n = sys_ring_pop(tmp, sizeof(tmp))) > 0) {
-            write_all(fd, tmp, n);
-        }
-        close(fd);
-    }
-
-    log_lock(); g_fs_suppress = 0; g_hd_suppress = 0; log_unlock();
+    flush_common(&g_sys_rb, SYS_LOG_PATH, SYS_LOG_MAX_FILE, 1, 1, 0);
 }
 
 void log_fs_flush(void)
 {
-    char tmp[512];
-    int n = fs_ring_pop(tmp, sizeof(tmp));
-    if (n <= 0) return;
-
-    /* 屏蔽flush自身引发的FS日志 */
-    log_lock(); g_fs_suppress = 1; log_unlock();
-
-    int fd = open_append_rotate(FS_LOG_PATH, FS_LOG_MAX_FILE);
-    if (fd >= 0) {
-        write_all(fd, tmp, n);
-        while ((n = fs_ring_pop(tmp, sizeof(tmp))) > 0) {
-            write_all(fd, tmp, n);
-        }
-        close(fd);
-    }
-
-    log_lock(); g_fs_suppress = 0; log_unlock();
+    /* 保持你原来语义：flush期间屏蔽FS自身事件 */
+    flush_common(&g_fs_rb, FS_LOG_PATH, FS_LOG_MAX_FILE, 0, 0, &g_fs_suppress);
 }
 
 void log_hd_flush(void)
 {
-    char tmp[512];
-    int n = hd_ring_pop(tmp, sizeof(tmp));
-    if (n <= 0) return;
-
-    /* 屏蔽flush自身引发的HD日志（写hd.log必然磁盘IO） */
-    log_lock(); g_hd_suppress = 1; log_unlock();
-
-    int fd = open_append_rotate(HD_LOG_PATH, HD_LOG_MAX_FILE);
-    if (fd >= 0) {
-        write_all(fd, tmp, n);
-        while ((n = hd_ring_pop(tmp, sizeof(tmp))) > 0) {
-            write_all(fd, tmp, n);
-        }
-        close(fd);
-    }
-
-    log_lock(); g_hd_suppress = 0; log_unlock();
+    /* 保持你原来语义：flush期间屏蔽HD自身事件 */
+    flush_common(&g_hd_rb, HD_LOG_PATH, HD_LOG_MAX_FILE, 0, 0, &g_hd_suppress);
 }
