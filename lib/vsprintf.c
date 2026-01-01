@@ -23,10 +23,10 @@
 /*======================================================================*
                                 i2a
  *======================================================================*/
-PRIVATE char* i2a(int val, int base, char ** ps)
+PRIVATE char* i2a(unsigned int val, int base, char ** ps)
 {
-	int m = val % base;
-	int q = val / base;
+	unsigned int m = val % base;
+	unsigned int q = val / base;
 	if (q) {
 		i2a(q, base, ps);
 	}
@@ -90,7 +90,7 @@ PUBLIC int vsprintf(char *buf, const char *fmt, va_list args)
 			p_next_arg += 4;
 			break;
 		case 'x':
-			m = *((int*)p_next_arg);
+			m = *((unsigned int*)p_next_arg);
 			i2a(m, 16, &q);
 			p_next_arg += 4;
 			break;
