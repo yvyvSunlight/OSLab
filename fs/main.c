@@ -66,10 +66,6 @@ PUBLIC void task_fs()
 			fs_msg.RETVAL = do_unlink();
 			log_fs_event(msgtype, src, fs_msg.RETVAL);
 			break;
-		case SET_CHECKSUM:
-			fs_msg.RETVAL = do_set_checksum();
-			log_fs_event(msgtype, src, fs_msg.RETVAL);
-			break;
 		case GET_CHECKSUM:
 			fs_msg.RETVAL = do_get_checksum();
 			log_fs_event(msgtype, src, fs_msg.RETVAL);
@@ -79,6 +75,9 @@ PUBLIC void task_fs()
 			break;
 		case VERIFY_CHECKSUM:
 			fs_msg.RETVAL = do_verify_checksum();
+			break;
+		case REFRESH_CHECKSUMS:
+			fs_msg.RETVAL = do_refresh_checksums();
 			break;
 		case RESUME_PROC:
 			log_fs_event(msgtype, src, fs_msg.PROC_NR);
@@ -123,11 +122,11 @@ PUBLIC void task_fs()
 		msg_name[FORK]   = "FORK";
 		msg_name[EXIT]   = "EXIT";
 		msg_name[STAT]   = "STAT";
-		msg_name[SET_CHECKSUM] = "SET_CHECKSUM";
 		msg_name[GET_CHECKSUM] = "GET_CHECKSUM";
 		msg_name[TRUNCATE] = "TRUNCATE";
 		msg_name[CALC_CHECKSUM] = "CALC_CHECKSUM";
 		msg_name[VERIFY_CHECKSUM] = "VERIFY_CHECKSUM";
+		msg_name[REFRESH_CHECKSUMS] = "REFRESH_CHECKSUMS";
 
 		switch (msgtype) {
 		case UNLINK:
@@ -146,10 +145,10 @@ PUBLIC void task_fs()
 			break;
 		case RESUME_PROC:
 			break;
-		case SET_CHECKSUM:
 		case GET_CHECKSUM:
 		case CALC_CHECKSUM:
 		case VERIFY_CHECKSUM:
+		case REFRESH_CHECKSUMS:
 			break;
 		default:
 			assert(0);

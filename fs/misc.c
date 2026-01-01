@@ -378,47 +378,6 @@ PUBLIC int do_stat()
 }
 
 /****************************************************************************
- *                           do_set_checksum
- *****************************************************************************/
-/* 写入 inode 中的 md5_checksum（32字节），不写入 key */
-PUBLIC int do_set_checksum()
-{
-	char pathname[MAX_PATH];
-	char filename[MAX_PATH];
-	char md5_str[MD5_STR_BUF_LEN];
-
-	int name_len = fs_msg.NAME_LEN;
-	int src = fs_msg.source;
-	assert(name_len < MAX_PATH);
-	phys_copy((void*)va2la(TASK_FS, pathname),
-		  (void*)va2la(src, fs_msg.PATHNAME),
-		  name_len);
-	pathname[name_len] = 0;
-
-	phys_copy((void*)va2la(TASK_FS, md5_str),
-		  (void*)va2la(src, fs_msg.BUF),
-		  MD5_HASH_LEN);
-	md5_str[MD5_HASH_LEN] = 0;
-
-	int inode_nr = search_file(pathname);
-	if (inode_nr == INVALID_INODE)
-		return -1;
-
-	struct inode * dir_inode;
-	if (strip_path(filename, pathname, &dir_inode) != 0)
-		return -1;
-
-	struct inode * pin = get_inode(dir_inode->i_dev, inode_nr);
-
-	memcpy(pin->md5_checksum, md5_str, MD5_HASH_LEN);
-	// pin->checksum_key = 0; /* never stored */
-
-	sync_inode(pin);
-	put_inode(pin);
-	return 0;
-}
-
-/****************************************************************************
  *                           do_get_checksum
  *****************************************************************************/
 /* 只返回 inode 中存储的 md5_checksum（32字节） */
@@ -537,6 +496,75 @@ PUBLIC int do_verify_checksum()
 	}
 
 	put_inode(pin);
+	return 0;
+}
+
+/*****************************************************************************
+ *                           do_refresh_checksums
+ *****************************************************************************/
+/**
+ * 刷新根目录下所有可执行文件的校验和
+ * 仅允许 INIT 进程调用，遍历根目录下所有普通文件，用当前 key 重新计算并写入 inode
+ * 
+ * @return  0 成功，-1 失败（非 INIT 调用）
+ */
+PUBLIC int do_refresh_checksums()
+{
+	int src = fs_msg.source;
+
+	/* 仅允许 INIT 进程调用，防止普通用户绕过校验 */
+	if (src != INIT)
+		return -1;
+
+	int dev = root_inode->i_dev;
+	int dir_blk0 = root_inode->i_start_sect;
+	int nr_dir_blks = (root_inode->i_size + SECTOR_SIZE - 1) / SECTOR_SIZE;
+	int nr_entries = root_inode->i_size / DIR_ENTRY_SIZE;
+
+	int seen = 0;
+	int refreshed = 0;
+	int i, j;
+
+	for (i = 0; i < nr_dir_blks; i++) {
+		RD_SECT(dev, dir_blk0 + i);
+		struct dir_entry * pde = (struct dir_entry *)fsbuf;
+
+		for (j = 0; j < SECTOR_SIZE / DIR_ENTRY_SIZE && seen < nr_entries; j++, pde++, seen++) {
+			if (pde->inode_nr == 0)
+				continue;
+
+			char name[MAX_FILENAME_LEN + 1];
+			memcpy(name, pde->name, MAX_FILENAME_LEN);
+			name[MAX_FILENAME_LEN] = 0;
+
+			/* 跳过特殊文件 */
+			if (name[0] == '.')
+				continue;
+			if (strcmp(name, "cmd.tar") == 0)
+				continue;
+			if (strcmp(name, "kernel.bin") == 0 ||
+			    strcmp(name, "hdboot.bin") == 0 ||
+			    strcmp(name, "hdloader.bin") == 0)
+				continue;
+			if (strncmp(name, "dev_tty", 7) == 0)
+				continue;
+
+			struct inode * pin = get_inode(dev, pde->inode_nr);
+			int imode = pin->i_mode & I_TYPE_MASK;
+
+			/* 只对普通文件做校验 */
+			if (imode == I_REGULAR) {
+				char md5_str[MD5_STR_BUF_LEN];
+				if (calc_md5_for_file(pin, md5_str) == 0) {
+					memcpy(pin->md5_checksum, md5_str, MD5_HASH_LEN);
+					sync_inode(pin);
+					refreshed++;
+				}
+			}
+			put_inode(pin);
+		}
+	}
+
 	return 0;
 }
 

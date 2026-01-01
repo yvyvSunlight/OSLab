@@ -247,8 +247,6 @@ void untar(const char * filename)
 		}
 		printf("    %s\n", phdr->name);
 		
-		int need_checksum = !should_skip_checksum(phdr->name);
-		
 		while (bytes_left) {
 			int iobytes = min(chunk, bytes_left);
 			read(fd, buf,
@@ -260,17 +258,6 @@ void untar(const char * filename)
 		}
 		
 		close(fdout);
-
-		// 计算MD5校验值（由FS内部持有key）并写入inode
-		if (need_checksum) {
-			char md5_str[MD5_STR_BUF_LEN];
-			if (calc_checksum(name_bak, md5_str) == 0) {
-				if (set_checksum(name_bak, md5_str) != 0)
-					printf("    [MD5 set failed] for %s\n", name_bak);
-			} else {
-				printf("    [MD5 calc failed] for %s\n", name_bak);
-			}
-		}
 	}
 
 	if (i) {
@@ -378,7 +365,14 @@ void Init()
 
 	/* extract `cmd.tar' */
 	untar("/cmd.tar");
-			
+
+	/* 刷新所有可执行文件的校验和（每次启动都执行，与 untar 解耦） */
+	printf("[refreshing checksums...\n");
+	if (refresh_checksums() == 0) {
+		printf(" done]\n");
+	} else {
+		printf(" failed]\n");
+	}
 
 	char * tty_list[] = {"/dev_tty1", "/dev_tty2"};
 	const int shell_slots = SHELLS_PER_TTY;

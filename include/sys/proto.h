@@ -100,10 +100,10 @@ PUBLIC int		do_stat();
 PUBLIC int		strip_path(char * filename, const char * pathname,
 				   struct inode** ppinode);
 PUBLIC int		search_file(char * path);
-PUBLIC int		do_set_checksum();
 PUBLIC int		do_get_checksum();
 PUBLIC int		do_calc_checksum();
 PUBLIC int		do_verify_checksum();
+PUBLIC int		do_refresh_checksums();
 
 /* fs/disklog.c */
 PUBLIC int		do_disklog();
