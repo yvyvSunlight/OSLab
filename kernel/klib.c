@@ -160,3 +160,28 @@ PUBLIC void delay(int time)
 		}
 	}
 }
+
+
+// sec
+// canary
+static unsigned long long next = 1;
+int random(void) {
+    next = next * 1103515245 + 12345;
+    return (unsigned int)(next/65536) % 32768;
+}
+
+
+PUBLIC int put_canary() {
+    int canary = random();
+    asm("movl %0, %%gs:0x28" : "=r"(canary));
+
+}
+
+PUBLIC void canary_check(int value){
+    int canary;
+    asm("movl %%gs:0x28, %0" : "=r"(canary));
+    // assert(canary==value);
+    if (value != canary) {
+        panic("stack smashing detected!!\n");
+    }
+}
