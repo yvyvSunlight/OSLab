@@ -12,6 +12,9 @@ config/
 *.o
 lib/orangescrt.a
 
+# 命令
+build_and_update.sh
+
 # 打包文件
 *.tar
 *.gz
