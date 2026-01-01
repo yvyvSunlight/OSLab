@@ -1,7 +1,13 @@
 /*
-@Author  : Ramoor
-@Date    : 2025-12-29
+@Author  : Ramoor (modified)
+@Date    : 2026-01-01
+@Fixes   :
+  1) log_lock/log_unlock -> irqsave/irqrestore (nest-safe)
+  2) flush期间抑制FS/HD日志，避免日志风暴/活锁/环路等待放大
+  3) 日志文件大小上限 + rotate(unlink重建)
+  4) write返回值检查（write_all）
 */
+
 #include "type.h"
 #include "config.h"
 #include "stdio.h"
@@ -17,26 +23,84 @@
 #include "proto.h"
 #include "log.h"
 
+/* ---------------- paths ---------------- */
 #define MM_LOG_PATH     "/mm.log"
 #define SYS_LOG_PATH    "/sys.log"
+#define FS_LOG_PATH     "/fs.log"
+#define HD_LOG_PATH     "/hd.log"
+
+/* ---------------- ring sizes ---------------- */
 #define MM_RING_SIZE    (8 * 1024)
 #define SYS_RING_SIZE   (8 * 1024)
-#define MM_LOG_LINE_MAX 192
-#define SYS_LOG_LINE_MAX 192
+#define FS_RING_SIZE    (8 * 1024)
+#define HD_RING_SIZE    (8 * 1024)
 
-/* 单核：用关中断保护临界区，避免“拿锁后被抢占”导致永远自旋 */
+/* ---------------- line max ---------------- */
+#define MM_LOG_LINE_MAX  192
+#define SYS_LOG_LINE_MAX 192
+#define FS_LOG_LINE_MAX  192
+#define HD_LOG_LINE_MAX  192
+
+/* ---------------- file max (rotate) ----------------
+ * 你可以按需调整。教学OS建议别太大，避免inode/块限制触发写失败。
+ */
+#define MM_LOG_MAX_FILE   (64 * 1024)
+#define SYS_LOG_MAX_FILE  (64 * 1024)
+#define FS_LOG_MAX_FILE   (64 * 1024)
+#define HD_LOG_MAX_FILE   (64 * 1024)
+
+/* 是否把日志同时printl到控制台（IO重时建议关掉） */
+#define LOG_ECHO_CONSOLE  1
+
+/* =========================================================
+ *  IRQ save/restore (nest-safe)  —— 关键修复
+ * ========================================================= */
+#define EFLAGS_IF 0x200
+
+static inline u32 read_eflags(void)
+{
+    u32 f;
+    __asm__ __volatile__("pushfl; popl %0" : "=r"(f));
+    return f;
+}
+
+/* 单核：用关中断保护临界区，但必须支持嵌套，且恢复原IF状态 */
+static int g_log_nest = 0;
+static int g_log_prev_if = 0;
+
 static void log_lock(void)
 {
-    disable_int();
-}
-static void log_unlock(void)
-{
-    enable_int();
+    if (g_log_nest == 0) {
+        g_log_prev_if = (read_eflags() & EFLAGS_IF) ? 1 : 0;
+        disable_int();
+    }
+    g_log_nest++;
 }
 
-/* ---------- RTC ---------- */
+static void log_unlock(void)
+{
+    g_log_nest--;
+    if (g_log_nest == 0 && g_log_prev_if) {
+        enable_int();
+    }
+}
+
+/* =========================================================
+ * RTC
+ * ========================================================= */
 static int g_mm_log_enabled  = 1;
 static int g_sys_log_enabled = 1;
+static int g_fs_log_enabled  = 1;
+static int g_hd_log_enabled  = 1;
+
+/* flush期间屏蔽：避免写日志触发自身/风暴 */
+static volatile int g_fs_suppress = 0;
+static volatile int g_hd_suppress = 0;
+
+void log_mm_enable(int enable)  { g_mm_log_enabled  = (enable != 0); }
+void log_sys_enable(int enable) { g_sys_log_enabled = (enable != 0); }
+void log_fs_enable(int enable)  { g_fs_log_enabled  = (enable != 0); }
+void log_hd_enable(int enable)  { g_hd_log_enabled  = (enable != 0); }
 
 static int read_register_log(char reg_addr)
 {
@@ -65,7 +129,9 @@ static int get_rtc_time_log(struct time *t)
     return 0;
 }
 
-/* ---------- ring helpers ---------- */
+/* =========================================================
+ * ring helpers
+ * ========================================================= */
 static int ring_used_nolock(int head, int tail, int size)
 {
     return (head >= tail) ? (head - tail) : (size - (tail - head));
@@ -82,7 +148,9 @@ static void ring_drop_oldest(int *tail, int bytes, int size)
     }
 }
 
-/* ====================== MM ring ====================== */
+/* =========================================================
+ * MM ring
+ * ========================================================= */
 static char g_mm_ring[MM_RING_SIZE];
 static int  g_mm_head = 0;
 static int  g_mm_tail = 0;
@@ -149,7 +217,9 @@ static int mm_ring_pop(char* out, int maxlen)
     return n;
 }
 
-/* ====================== SYS ring ====================== */
+/* =========================================================
+ * SYS ring
+ * ========================================================= */
 static char g_sys_ring[SYS_RING_SIZE];
 static int  g_sys_head = 0;
 static int  g_sys_tail = 0;
@@ -216,160 +286,9 @@ static int sys_ring_pop(char* out, int maxlen)
     return n;
 }
 
-/* ---------- name helpers ---------- */
-static const char* mm_type_name(int msgtype)
-{
-    switch (msgtype) {
-    case FORK: return "FORK";
-    case EXIT: return "EXIT";
-    case EXEC: return "EXEC";
-    case WAIT: return "WAIT";
-    case KILL: return "KILL";
-    default:   return "UNKNOWN";
-    }
-}
-static const char* sys_type_name(int msgtype)
-{
-    switch (msgtype) {
-    case GET_TICKS:    return "GET_TICKS";
-    case GET_PID:      return "GET_PID";
-    case GET_RTC_TIME: return "GET_RTC_TIME";
-    case GET_PROCS:    return "GET_PROCS";
-    case CLEAR_SCREEN: return "CLEAR_SCREEN";
-    default:           return "UNKNOWN";
-    }
-}
-
-/* ---------- public controls ---------- */
-void log_mm_enable(int enable)  { g_mm_log_enabled  = (enable != 0); }
-void log_sys_enable(int enable) { g_sys_log_enabled = (enable != 0); }
-
-/* ====================== event APIs: 只写ring，不落盘 ====================== */
-void log_sys_event(int msgtype, int src, int val)
-{
-    if (!g_sys_log_enabled) return;
-
-    struct time t;
-    get_rtc_time_log(&t);
-
-    char line[SYS_LOG_LINE_MAX];
-    int n;
-
-    if (val == -1) {
-        n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d] SYS_%s\n",
-            t.year, t.month, t.day, t.hour, t.minute, t.second,
-            src, sys_type_name(msgtype));
-    } else {
-        n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d] SYS_%s val=%d\n",
-            t.year, t.month, t.day, t.hour, t.minute, t.second,
-            src, sys_type_name(msgtype), val);
-    }
-
-    printl("%s", line);
-    sys_ring_push(line, n);
-}
-
-void log_mm_event(int msgtype, int src, int val)
-{
-    if (!g_mm_log_enabled) return;
-
-    struct time t;
-    get_rtc_time_log(&t);
-
-    char line[MM_LOG_LINE_MAX];
-    int n;
-
-    if (val == -1) {
-        n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d] MM_%s\n",
-            t.year, t.month, t.day, t.hour, t.minute, t.second,
-            src, mm_type_name(msgtype));
-    } else {
-        n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d] MM_%s val=%d\n",
-            t.year, t.month, t.day, t.hour, t.minute, t.second,
-            src, mm_type_name(msgtype), val);
-    }
-
-    printl("%s", line);
-    mm_ring_push(line, n);
-
-    /* 关键：这里不允许再触发 open/write/flush */
-}
-
-/* ====================== flush APIs: 由 TASK_LOG 调用落盘 ====================== */
-static int open_append_once(const char* path)
-{
-    int fd = open(path, O_RDWR);
-    if (fd < 0) fd = open(path, O_CREAT | O_RDWR);
-    if (fd < 0) return -1;
-    lseek(fd, 0, SEEK_END);
-    return fd;
-}
-
-void log_mm_flush(void)
-{
-    char tmp[512];
-
-    /* 关键：先试着取一段；没有日志就直接返回，不要 open/write */
-    int n = mm_ring_pop(tmp, sizeof(tmp));
-    if (n <= 0) return;
-
-    int fd = open_append_once(MM_LOG_PATH);
-    if (fd < 0) {
-        /* 打不开文件：把取出来的这段塞回去会比较麻烦；
-           简化处理：丢弃这一小段（或你也可以改成“写回ring”） */
-        return;
-    }
-
-    write(fd, tmp, n);
-    while ((n = mm_ring_pop(tmp, sizeof(tmp))) > 0) {
-        write(fd, tmp, n);
-    }
-    close(fd); /* 你们 FS 可能 close 才真正提交 */
-}
-
-void log_sys_flush(void)
-{
-    char tmp[512];
-
-    int n = sys_ring_pop(tmp, sizeof(tmp));
-    if (n <= 0) return;
-
-    int fd = open_append_once(SYS_LOG_PATH);
-    if (fd < 0) return;
-
-    write(fd, tmp, n);
-    while ((n = sys_ring_pop(tmp, sizeof(tmp))) > 0) {
-        write(fd, tmp, n);
-    }
-    close(fd);
-}
-
-
-/* ======== append into log.c ======== */
-
-/* ---------- FS/HD paths & sizes ---------- */
-#define FS_LOG_PATH     "/fs.log"
-#define HD_LOG_PATH     "/hd.log"
-#define FS_RING_SIZE    (8 * 1024)
-#define HD_RING_SIZE    (8 * 1024)
-#define FS_LOG_LINE_MAX 192
-#define HD_LOG_LINE_MAX 192
-
-static int g_fs_log_enabled = 1;
-static int g_hd_log_enabled = 1;
-
-/* flush期间屏蔽：避免写日志导致自身日志无限增长 */
-static int g_fs_suppress = 0;
-static int g_hd_suppress = 0;
-
-void log_fs_enable(int enable) { g_fs_log_enabled = (enable != 0); }
-void log_hd_enable(int enable) { g_hd_log_enabled = (enable != 0); }
-
-/* ====================== FS ring ====================== */
+/* =========================================================
+ * FS ring
+ * ========================================================= */
 static char g_fs_ring[FS_RING_SIZE];
 static int  g_fs_head = 0;
 static int  g_fs_tail = 0;
@@ -436,7 +355,9 @@ static int fs_ring_pop(char* out, int maxlen)
     return n;
 }
 
-/* ====================== HD ring ====================== */
+/* =========================================================
+ * HD ring
+ * ========================================================= */
 static char g_hd_ring[HD_RING_SIZE];
 static int  g_hd_head = 0;
 static int  g_hd_tail = 0;
@@ -503,7 +424,33 @@ static int hd_ring_pop(char* out, int maxlen)
     return n;
 }
 
-/* ---------- name helpers ---------- */
+/* =========================================================
+ * name helpers
+ * ========================================================= */
+static const char* mm_type_name(int msgtype)
+{
+    switch (msgtype) {
+    case FORK: return "FORK";
+    case EXIT: return "EXIT";
+    case EXEC: return "EXEC";
+    case WAIT: return "WAIT";
+    case KILL: return "KILL";
+    default:   return "UNKNOWN";
+    }
+}
+
+static const char* sys_type_name(int msgtype)
+{
+    switch (msgtype) {
+    case GET_TICKS:    return "GET_TICKS";
+    case GET_PID:      return "GET_PID";
+    case GET_RTC_TIME: return "GET_RTC_TIME";
+    case GET_PROCS:    return "GET_PROCS";
+    case CLEAR_SCREEN: return "CLEAR_SCREEN";
+    default:           return "UNKNOWN";
+    }
+}
+
 static const char* fs_type_name(int msgtype)
 {
     switch (msgtype) {
@@ -535,12 +482,107 @@ static const char* hd_type_name(int msgtype)
     }
 }
 
-/* ====================== event APIs: FS/HD 只写ring ====================== */
+/* =========================================================
+ * IO helpers: open+rotate, write_all
+ * ========================================================= */
+static void write_all(int fd, const char* buf, int n)
+{
+    int off = 0;
+    while (off < n) {
+        int w = write(fd, buf + off, n - off);
+        if (w <= 0) break;
+        off += w;
+    }
+}
+
+/* 以追加方式打开；若文件>=max_bytes则rotate（unlink重建） */
+static int open_append_rotate(const char* path, int max_bytes)
+{
+    int fd = open(path, O_RDWR);
+    if (fd < 0) fd = open(path, O_CREAT | O_RDWR);
+    if (fd < 0) return -1;
+
+    int sz = lseek(fd, 0, SEEK_END);
+    if (sz < 0) sz = 0;
+
+    if (sz >= max_bytes) {
+        close(fd);
+        /* rotate：删掉重建（比依赖O_TRUNC更通用） */
+        unlink(path);
+        fd = open(path, O_CREAT | O_RDWR);
+        if (fd < 0) return -1;
+        /* 新文件从0开始写即可 */
+    } else {
+        /* 已经在末尾 */
+    }
+
+    return fd;
+}
+
+/* =========================================================
+ * event APIs: 只写ring（不落盘）
+ * ========================================================= */
+void log_sys_event(int msgtype, int src, int val)
+{
+    if (!g_sys_log_enabled) return;
+
+    struct time t;
+    get_rtc_time_log(&t);
+
+    char line[SYS_LOG_LINE_MAX];
+    int n;
+
+    if (val == -1) {
+        n = sprintf(line,
+            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d] SYS_%s\n",
+            t.year, t.month, t.day, t.hour, t.minute, t.second,
+            src, sys_type_name(msgtype));
+    } else {
+        n = sprintf(line,
+            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d] SYS_%s val=%d\n",
+            t.year, t.month, t.day, t.hour, t.minute, t.second,
+            src, sys_type_name(msgtype), val);
+    }
+
+#if LOG_ECHO_CONSOLE
+    printl("%s", line);
+#endif
+    sys_ring_push(line, n);
+}
+
+void log_mm_event(int msgtype, int src, int val)
+{
+    if (!g_mm_log_enabled) return;
+
+    struct time t;
+    get_rtc_time_log(&t);
+
+    char line[MM_LOG_LINE_MAX];
+    int n;
+
+    if (val == -1) {
+        n = sprintf(line,
+            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d] MM_%s\n",
+            t.year, t.month, t.day, t.hour, t.minute, t.second,
+            src, mm_type_name(msgtype));
+    } else {
+        n = sprintf(line,
+            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d] MM_%s val=%d\n",
+            t.year, t.month, t.day, t.hour, t.minute, t.second,
+            src, mm_type_name(msgtype), val);
+    }
+
+#if LOG_ECHO_CONSOLE
+    printl("%s", line);
+#endif
+    mm_ring_push(line, n);
+
+    /* 关键：event路径绝不触发open/write/flush */
+}
+
 void log_fs_event(int msgtype, int src, int val)
 {
     if (!g_fs_log_enabled) return;
-
-    /* flush期间屏蔽，避免自喂 */
     if (g_fs_suppress) return;
 
     struct time t;
@@ -561,14 +603,15 @@ void log_fs_event(int msgtype, int src, int val)
             src, fs_type_name(msgtype), val);
     }
 
+#if LOG_ECHO_CONSOLE
     printl("%s", line);
+#endif
     fs_ring_push(line, n);
 }
 
 void log_hd_event(int msgtype, int src, int dev, int val)
 {
     if (!g_hd_log_enabled) return;
-
     if (g_hd_suppress) return;
 
     struct time t;
@@ -589,32 +632,77 @@ void log_hd_event(int msgtype, int src, int dev, int val)
             src, dev, hd_type_name(msgtype), val);
     }
 
+#if LOG_ECHO_CONSOLE
     printl("%s", line);
+#endif
     hd_ring_push(line, n);
 }
 
-/* ====================== flush APIs: 由 TASK_LOG 落盘 ====================== */
+/* =========================================================
+ * flush APIs: 由 TASK_LOG 调用落盘
+ * 关键点：
+ *  - flush中绝不持有log_lock做IO
+ *  - flush时抑制FS/HD日志（写文件必然触发FS/HD事件）
+ *  - 文件达到上限就rotate
+ * ========================================================= */
+void log_mm_flush(void)
+{
+    char tmp[512];
+    int n = mm_ring_pop(tmp, sizeof(tmp));
+    if (n <= 0) return;
+
+    /* 抑制FS/HD：写mm.log会触发FS/HD事件，容易引发日志风暴 */
+    log_lock(); g_fs_suppress = 1; g_hd_suppress = 1; log_unlock();
+
+    int fd = open_append_rotate(MM_LOG_PATH, MM_LOG_MAX_FILE);
+    if (fd >= 0) {
+        write_all(fd, tmp, n);
+        while ((n = mm_ring_pop(tmp, sizeof(tmp))) > 0) {
+            write_all(fd, tmp, n);
+        }
+        close(fd);
+    }
+
+    log_lock(); g_fs_suppress = 0; g_hd_suppress = 0; log_unlock();
+}
+
+void log_sys_flush(void)
+{
+    char tmp[512];
+    int n = sys_ring_pop(tmp, sizeof(tmp));
+    if (n <= 0) return;
+
+    log_lock(); g_fs_suppress = 1; g_hd_suppress = 1; log_unlock();
+
+    int fd = open_append_rotate(SYS_LOG_PATH, SYS_LOG_MAX_FILE);
+    if (fd >= 0) {
+        write_all(fd, tmp, n);
+        while ((n = sys_ring_pop(tmp, sizeof(tmp))) > 0) {
+            write_all(fd, tmp, n);
+        }
+        close(fd);
+    }
+
+    log_lock(); g_fs_suppress = 0; g_hd_suppress = 0; log_unlock();
+}
+
 void log_fs_flush(void)
 {
     char tmp[512];
-
     int n = fs_ring_pop(tmp, sizeof(tmp));
     if (n <= 0) return;
 
-    /* 关键：屏蔽 flush 自身引发的 FS 日志 */
+    /* 屏蔽flush自身引发的FS日志 */
     log_lock(); g_fs_suppress = 1; log_unlock();
 
-    int fd = open_append_once(FS_LOG_PATH);
-    if (fd < 0) {
-        log_lock(); g_fs_suppress = 0; log_unlock();
-        return;
+    int fd = open_append_rotate(FS_LOG_PATH, FS_LOG_MAX_FILE);
+    if (fd >= 0) {
+        write_all(fd, tmp, n);
+        while ((n = fs_ring_pop(tmp, sizeof(tmp))) > 0) {
+            write_all(fd, tmp, n);
+        }
+        close(fd);
     }
-
-    write(fd, tmp, n);
-    while ((n = fs_ring_pop(tmp, sizeof(tmp))) > 0) {
-        write(fd, tmp, n);
-    }
-    close(fd);
 
     log_lock(); g_fs_suppress = 0; log_unlock();
 }
@@ -622,24 +710,20 @@ void log_fs_flush(void)
 void log_hd_flush(void)
 {
     char tmp[512];
-
     int n = hd_ring_pop(tmp, sizeof(tmp));
     if (n <= 0) return;
 
-    /* 关键：屏蔽 flush 自身引发的 HD 日志（写hd.log必然触发磁盘IO） */
+    /* 屏蔽flush自身引发的HD日志（写hd.log必然磁盘IO） */
     log_lock(); g_hd_suppress = 1; log_unlock();
 
-    int fd = open_append_once(HD_LOG_PATH);
-    if (fd < 0) {
-        log_lock(); g_hd_suppress = 0; log_unlock();
-        return;
+    int fd = open_append_rotate(HD_LOG_PATH, HD_LOG_MAX_FILE);
+    if (fd >= 0) {
+        write_all(fd, tmp, n);
+        while ((n = hd_ring_pop(tmp, sizeof(tmp))) > 0) {
+            write_all(fd, tmp, n);
+        }
+        close(fd);
     }
-
-    write(fd, tmp, n);
-    while ((n = hd_ring_pop(tmp, sizeof(tmp))) > 0) {
-        write(fd, tmp, n);
-    }
-    close(fd);
 
     log_lock(); g_hd_suppress = 0; log_unlock();
 }
