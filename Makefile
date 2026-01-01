@@ -35,6 +35,7 @@ OBJS		= kernel/kernel.o kernel/start.o kernel/main.o kernel/stackcheck.o\
 			kernel/systask.o kernel/hd.o\
 			kernel/kliba.o kernel/klib.o\
 			kernel/log.o kernel/logtask.o\
+			kernel/timestamp.o kernel/filecheck.o\
 			lib/syslog.o\
 			mm/main.o mm/forkexit.o mm/exec.o\
 			fs/main.o fs/open.o fs/misc.o fs/read_write.o\
@@ -46,8 +47,9 @@ LOBJS		=  lib/syscall.o\
 			lib/open.o lib/read.o lib/write.o lib/close.o lib/unlink.o\
 			lib/lseek.o\
 			lib/getpid.o lib/getprocs.o lib/clear.o lib/kill.o lib/stat.o\
-			lib/fork.o lib/exit.o lib/wait.o lib/exec.o lib/checksum.o \
+			lib/fork.o lib/exit.o lib/wait.o lib/exec.o lib/filecheck.o \
 			lib/canary.o
+
 DASMOUTPUT	= kernel.bin.asm
 
 OBJCOPY = objcopy
@@ -151,6 +153,12 @@ kernel/proc.o: kernel/proc.c
 kernel/stackcheck.o: kernel/stackcheck.c
 	$(CC) $(CFLAGS) -o $@ $<
 
+kernel/timestamp.o: kernel/timestamp.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+kernel/filecheck.o: kernel/filecheck.c
+	$(CC) $(CFLAGS) -o $@ $<
+
 lib/printf.o: lib/printf.c
 	$(CC) $(CFLAGS) -o $@ $<
 
@@ -220,7 +228,7 @@ lib/exec.o: lib/exec.c
 lib/stat.o: lib/stat.c
 	$(CC) $(CFLAGS) -o $@ $<
 
-lib/checksum.o: lib/checksum.c
+lib/filecheck.o: lib/filecheck.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 lib/canary.o: lib/canary.c

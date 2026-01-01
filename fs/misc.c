@@ -16,6 +16,7 @@
 #include "string.h"
 #include "fs.h"
 #include "proc.h"
+/**
 #include "tty.h"
 #include "console.h"
 #include "global.h"
@@ -27,7 +28,7 @@
 /*****************************************************************************
  *                                do_stat
  *************************************************************************//**
- * Perform the stat() syscall.
+	char md5_str[MD5_STR_BUF_LEN];
  * 
  * @return  On success, zero is returned. On error, -1 is returned.
  *****************************************************************************/
@@ -59,7 +60,7 @@ PUBLIC int do_stat()
 		/* theoretically never fail here
 		 * (it would have failed earlier when
 		 *  search_file() was called)
-		 */
+	memcpy(pin->md5_checksum, md5_str, MD5_HASH_LEN);
 		assert(0);
 	}
 	pin = get_inode(dir_inode->i_dev, inode_nr);
@@ -83,10 +84,19 @@ PUBLIC int do_stat()
 /****************************************************************************
  *                           do_set_checksum
  *****************************************************************************/
+/**
+ * 设置文件的MD5校验和
+ * 消息参数：
+ *   PATHNAME  - 文件路径
+ *   NAME_LEN  - 路径长度
+ *   BUF       - MD5字符串（32字符）
+ *   CHECKSUM_KEY - 用于计算的key
+ */
 PUBLIC int do_set_checksum()
 {
 	char pathname[MAX_PATH];
 	char filename[MAX_PATH];
+	 char md5_str[MD5_STR_BUF_LEN];
 
 	int name_len = fs_msg.NAME_LEN;
 	int src = fs_msg.source;
@@ -95,6 +105,16 @@ PUBLIC int do_set_checksum()
 		  (void*)va2la(src, fs_msg.PATHNAME),
 		  name_len);
 	pathname[name_len] = 0;
+
+	/* 复制MD5字符串 */
+	phys_copy((void*)va2la(TASK_FS, md5_str),
+		  (void*)va2la(src, fs_msg.BUF),
+		  32);
+	md5_str[32] = 0;
+
+	/* 获取key */
+	u32 key = (u32)fs_msg.CHECKSUM_KEY;
+	/**
 
 	// 获取文件对应的inode号
 	int inode_nr = search_file(pathname);
@@ -107,7 +127,10 @@ PUBLIC int do_set_checksum()
 		return -1;
 
 	struct inode * pin = get_inode(dir_inode->i_dev, inode_nr);
-	pin->check_sum = (u8)fs_msg.CHECKSUM;
+	
+	/* 复制MD5校验和到inode */
+	memcpy(pin->md5_checksum, md5_str, MD5_HASH_LEN);
+	pin->checksum_key = key;
 	
 	// 将文件的inode更新回磁盘
 	sync_inode(pin);
@@ -120,6 +143,16 @@ PUBLIC int do_set_checksum()
 /****************************************************************************
  *                           do_get_checksum
  *****************************************************************************/
+/**
+ * 获取文件的MD5校验和
+ * 消息参数：
+ *   PATHNAME  - 文件路径
+ *   NAME_LEN  - 路径长度
+		phys_copy((void*)va2la(src, fs_msg.BUF),
+			  (void*)va2la(TASK_FS, pin->md5_checksum),
+			  MD5_HASH_LEN);
+ *   CHECKSUM_KEY - 存储的key
+ */
 PUBLIC int do_get_checksum()
 {
 	char pathname[MAX_PATH];
@@ -142,10 +175,18 @@ PUBLIC int do_get_checksum()
 		return -1;
 
 	struct inode * pin = get_inode(dir_inode->i_dev, inode_nr);
-	int checksum = pin->check_sum;
+	
+	/* 复制MD5字符串到调用者缓冲区 */
+	phys_copy((void*)va2la(src, fs_msg.BUF),
+		  (void*)va2la(TASK_FS, pin->md5_checksum),
+		MD5_HASH_LEN);
+	
+	/* 将key存入返回消息 */
+	fs_msg.CHECKSUM_KEY = pin->checksum_key;
+	
 	put_inode(pin);
 
-	return checksum;
+	return 0;
 }
 
 /*****************************************************************************

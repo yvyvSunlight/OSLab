@@ -186,24 +186,6 @@ struct posix_tar_header
 	/* 500 */
 };
 
-PRIVATE u8 popcount8(u8 b)
-{
-	u8 cnt = 0;
-	while (b) {
-		cnt += b & 0x1;
-		b >>= 1;
-	}
-	return cnt;
-}
-
-PRIVATE u8 accumulate_checksum(const u8 * buf, int len, u8 seed)
-{
-	for (int i = 0; i < len; i++) {
-		seed ^= popcount8(buf[i]);
-	}
-	return seed;
-}
-
 PRIVATE int should_skip_checksum(const char * name)
 {
 	return strcmp(name, "kernel.bin") == 0 ||
@@ -211,36 +193,12 @@ PRIVATE int should_skip_checksum(const char * name)
 	       strcmp(name, "hdloader.bin") == 0;
 }
 
-// 计算已打开的文件的奇偶校验和
-PRIVATE int calc_checksum_fd(int fd, int total_len)
-{
-	u8 buf[SECTOR_SIZE];
-	int left = total_len;
-	u8 checksum = 0;
-
-	if (lseek(fd, 0, SEEK_SET) < 0)
-		return -1;
-
-	while (left > 0) {
-		int to_read = min((int)sizeof(buf), left);
-		int r = read(fd, buf, to_read);
-		if (r != to_read)
-			return -1;
-		checksum = accumulate_checksum(buf, r, checksum);
-		left -= r;
-	}
-
-	/* rewind for callers that reuse the fd */
-	lseek(fd, 0, SEEK_SET);
-
-	return checksum;
-}
-
 /*****************************************************************************
  *                                untar
  *****************************************************************************/
 /**
  * Extract the tar file and store them.
+ * 使用MD5(key || file || key)方式计算校验和
  * 
  * @param filename The tar file.
  *****************************************************************************/
@@ -249,6 +207,9 @@ void untar(const char * filename)
 	printf("[extract `%s'\n", filename);
 	int fd = open(filename, O_RDWR);
 	assert(fd != -1);
+
+	// 初始化时间戳模块
+	init_timestamp();
 
 	// 缓冲区，16个扇区
 	char buf[SECTOR_SIZE * 16];
@@ -288,8 +249,9 @@ void untar(const char * filename)
 			return;
 		}
 		printf("    %s\n", phdr->name);
-		u8 checksum = 0;
+		
 		int need_checksum = !should_skip_checksum(phdr->name);
+		
 		while (bytes_left) {
 			int iobytes = min(chunk, bytes_left);
 			read(fd, buf,
@@ -297,17 +259,24 @@ void untar(const char * filename)
 			// 将压缩包的数据内容写到同名文件中 => 解压
 			bytes = write(fdout, buf, iobytes);
 			assert(bytes == iobytes);
-			if (need_checksum)
-				checksum = accumulate_checksum((u8*)buf, iobytes, checksum);
 			bytes_left -= iobytes;
 		}
-		close(fdout);
-		// 将奇偶校验值写入
+		
+		// 计算MD5校验值并写入inode（基于落盘后的文件描述符）
 		if (need_checksum) {
-			int ret = set_checksum(name_bak, checksum);
-			if (ret != 0)
-				printf("     for %s\n", name_bak);
+			u32 key = generate_checksum_key();
+			char md5_str[MD5_STR_BUF_LEN];
+			int md5_ret = compute_md5_with_key_fd(fdout, (u32)f_len, key, md5_str);
+			if (md5_ret == 0) {
+				int ret = set_checksum(name_bak, md5_str, key);
+				if (ret != 0)
+					printf("    [MD5 set failed] for %s\n", name_bak);
+			} else {
+				printf("    [MD5 calc failed] for %s\n", name_bak);
+			}
 		}
+
+		close(fdout);
 	}
 
 	if (i) {
@@ -327,6 +296,7 @@ void untar(const char * filename)
  *****************************************************************************/
 /**
  * A very very simple shell.
+ * 使用MD5(key || file || key)方式进行文件校验
  * 
  * @param tty_name  TTY file name.
  *****************************************************************************/
@@ -342,70 +312,71 @@ void shabby_shell(const char * tty_name)
 
 	while (1) {
 		int r = read(0, rdbuf, 70);
-		
 		if (r <= 0)  continue;
 		// trim trailing LF
 		while (r > 0 && rdbuf[r - 1] == '\n') 
 			r--;
 		rdbuf[r] = 0;
 
+		char *argv[PROC_ORIGIN_STACK];
 		int argc = 0;
-		char * argv[PROC_ORIGIN_STACK];
-		char * p = rdbuf;
-		char * s;
+		char *p = rdbuf;
+		char *s = 0;
 		int word = 0;
-		char ch;
-		do {
-			ch = *p;
-			if (*p != ' ' && *p != 0 && !word) {
+		while (*p) {
+			if (*p != ' ' && !word) {
 				s = p;
 				word = 1;
 			}
-			if ((*p == ' ' || *p == 0) && word) {
-				word = 0;
+			if (word && (*p == ' ')) {
 				argv[argc++] = s;
 				*p = 0;
+				word = 0;
 			}
 			p++;
-		} while(ch);
-		argv[argc] = 0;
-
-		int fd = open(argv[0], O_RDWR);  // 拿到命令文件的文件描述符
-		if (fd == -1) {
-			if (rdbuf[0]) {
-				write(1, "{", 1);
-				write(1, rdbuf, r);
-				write(1, "}\n", 2);
-			}
 		}
-		// 如果找到命令，就先做校验，通过后fork执行
-		else {
-			struct stat s;
+		if (word) {
+			argv[argc++] = s;
+		}
+		argv[argc] = 0;
+		
+		if (argc == 0)
+			continue;
+
+		int need_checksum = !should_skip_checksum(argv[0]);
+		if (need_checksum) {
+			char stored_md5[MD5_STR_BUF_LEN];
+			u32 stored_key = 0;
+			struct stat file_stat;
 			int verified = 0;
-			int stored = get_checksum(argv[0]);
-			if (stored >= 0 && stat(argv[0], &s) == 0) {
-				int current = calc_checksum_fd(fd, s.st_size);
-				if (current >= 0 && stored == current)
-					verified = 1;
+
+			if (stat(argv[0], &file_stat) == 0 &&
+			    get_checksum(argv[0], stored_md5, &stored_key) == 0) {
+				int fdfile = open(argv[0], O_RDONLY);
+				if (fdfile != -1) {
+					char md5_str[MD5_STR_BUF_LEN];
+					if (compute_md5_with_key_fd(fdfile, (u32)file_stat.st_size, stored_key, md5_str) == 0 &&
+					    compare_md5_strings(md5_str, stored_md5) == 0) {
+						verified = 1;
+						printf("[MD5 checksum ok] %s\n", argv[0]);
+					}
+					close(fdfile);
+				}
 			}
 
 			if (!verified) {
-				printf("[checksum failed] %s\n", argv[0]);
-				close(fd);
+				printf("[MD5 checksum failed] %s\n", argv[0]);
 				continue;
 			}
+		}
 
-			printf("[checksum ok] %s\n", argv[0]);
-			close(fd);
-
-			int pid = fork();
-			if (pid != 0) { /* parent */
-				int s;
-				wait(&s);
-			}
-			else {/* child */
-				execv(argv[0], argv);
-			}
+		int pid = fork();
+		if (pid != 0) { /* parent */
+			int s;
+			wait(&s);
+		}
+		else {/* child */
+			execv(argv[0], argv);
 		}
 	}
 

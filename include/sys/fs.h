@@ -62,6 +62,13 @@ struct super_block {
 #define	SUPER_BLOCK_SIZE	56
 
 /**
+ * @def   MD5_HASH_LEN
+ * @brief MD5校验和十六进制长度（不含结束符）
+ */
+#define MD5_HASH_LEN		32   /* 32 hex chars */
+#define MD5_STR_BUF_LEN	33   /* 32 chars + NUL */
+
+/**
  * @struct inode
  * @brief  i-node
  *
@@ -77,8 +84,9 @@ struct inode {
 	u32	i_size;		/**< File size */
 	u32	i_start_sect;	/**< The first sector of the data */
 	u32	i_nr_sects;	/**< How many sectors the file occupies */
-	u8 check_sum;
-	u8	_unused[15];	/**< Stuff for alignment */
+	char	md5_checksum[MD5_HASH_LEN];	/**< MD5校验和（32字符十六进制，不含'\0'） */
+	u32	checksum_key;	/**< 用于计算MD5的key */
+	u8	_unused[12];	/**< Stuff for alignment，确保磁盘布局64字节 */
 
 	/* the following items are only present in memory */
 	int	i_dev;
@@ -92,8 +100,10 @@ struct inode {
  *
  * Note that this is the size of the struct in the device, \b NOT in memory.
  * The size in memory is larger because of some more members.
+ * 原来是32字节，现在扩展为：
+ * 16(基础字段) + 32(MD5) + 4(key) + 12(padding) = 64字节
  */
-#define	INODE_SIZE	32
+#define	INODE_SIZE	64
 
 /**
  * @def   MAX_FILENAME_LEN

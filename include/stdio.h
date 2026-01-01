@@ -160,9 +160,9 @@ PUBLIC int	execv		(const char * path, char * argv[]);
 /* lib/stat.c */
 PUBLIC int	stat		(const char *path, struct stat *buf);
 
-/* lib/checksum.c */
-PUBLIC int	set_checksum	(const char *path, int checksum);
-PUBLIC int	get_checksum	(const char *path);
+/* lib/filecheck.c */
+PUBLIC int	set_checksum	(const char *path, const char *md5_str, u32 key);
+PUBLIC int	get_checksum	(const char *path, char *md5_buf, u32 *key_out);
 
 /* lib/getprocs.c */
 PUBLIC int	get_procs	(struct proc_info *buf, int max);

@@ -229,7 +229,7 @@ PUBLIC void stackcheck_proc(struct proc *p)
 
         if (!ret_valid)
         {
-            printl("[STACKCHK] %s pid=%d name=%s frame=%d: INVALID ret=0x%x at ebp=0x%x\n",
+            panic("[STACKCHK] %s pid=%d name=%s frame=%d: INVALID ret=0x%x at ebp=0x%x\n",
                    get_proc_type_name(pid), pid, p->name, frame_count, ret_addr_off, ebp_la);
             return;
         }

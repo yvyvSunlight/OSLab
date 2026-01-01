@@ -499,8 +499,7 @@ PUBLIC struct super_block * get_super_block(int dev)
  * @return The inode ptr requested.
  *****************************************************************************/
 // 给定 (dev, inode号)，返回内存缓冲区中对应的inode的指针。如果已在缓存中 → 直接返回；否则 → 从磁盘读入inode_table。
-	PUBLIC struct inode *
-	get_inode(int dev, int num)
+PUBLIC struct inode * get_inode(int dev, int num)
 {
 	if (num == 0)
 		return 0;
@@ -541,7 +540,8 @@ PUBLIC struct super_block * get_super_block(int dev)
 	q->i_size = pinode->i_size;
 	q->i_start_sect = pinode->i_start_sect;
 	q->i_nr_sects = pinode->i_nr_sects;
-	q->check_sum = pinode->check_sum;
+	memcpy(q->md5_checksum, pinode->md5_checksum, MD5_HASH_LEN);
+	q->checksum_key = pinode->checksum_key;
 	return q;
 }
 
@@ -585,7 +585,8 @@ PUBLIC void put_inode(struct inode * pinode)
 	pinode->i_size = p->i_size;
 	pinode->i_start_sect = p->i_start_sect;
 	pinode->i_nr_sects = p->i_nr_sects;
-	pinode->check_sum = p->check_sum;
+	memcpy(pinode->md5_checksum, p->md5_checksum, MD5_HASH_LEN);
+	pinode->checksum_key = p->checksum_key;
 	WR_SECT(p->i_dev, blk_nr);
 }
 

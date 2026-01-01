@@ -148,6 +148,17 @@ PUBLIC void spin(char * func_name);
 PUBLIC void stackcheck_on_tick();
 PUBLIC void stackcheck_proc(struct proc* p);
 
+/* kernel/timestamp.c */
+PUBLIC void init_timestamp();
+PUBLIC u32  get_timestamp();
+PUBLIC u32  generate_checksum_key();
+
+/* kernel/filecheck.c */
+PUBLIC void compute_md5_with_key(u8 *data, u32 data_len, u32 key, char *result);
+PUBLIC int  verify_md5_with_key(u8 *data, u32 data_len, u32 key, const char *stored_md5);
+PUBLIC int  compare_md5_strings(const char *md5_1, const char *md5_2);
+PUBLIC int  compute_md5_with_key_fd(int fd, u32 data_len, u32 key, char *result);
+
 /* 以下是系统调用相关 */
 
 /* 系统调用 - 系统级 */
