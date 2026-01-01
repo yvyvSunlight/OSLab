@@ -110,6 +110,7 @@ PUBLIC int kernel_main()
 		p->regs.gs = (SELECTOR_KERNEL_GS & SA_RPL_MASK) | rpl;
 		p->regs.eip	= (u32)t->initial_eip;
 		p->regs.esp	= (u32)stk;
+		p->regs.ebp = (u32)(stk);
 		p->regs.eflags	= eflags;
 
 		/* Record stack bounds for TASK/NATIVE (linear addresses) */
