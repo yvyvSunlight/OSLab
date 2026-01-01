@@ -12,7 +12,7 @@ CFLAGS		= -I ../include/ -I ../include/sys/ -c -fno-builtin -fno-stack-protector
 LDFLAGS		= -Ttext 0x1000
 DASMFLAGS	= -D
 LIB		= ../lib/orangescrt.a
-BIN		= echo pwd ls kill touch edit rm ps clear cat ret2text ret2shellcode ret2lib pstackof
+BIN		= echo pwd ls kill touch edit rm ps clear cat ret2text ret2shellcode ret2lib pstackof inject
 
 # All Phony Targets
 .PHONY : everything final clean realclean disasm all install
@@ -124,4 +124,10 @@ pstackof.o: ../poc/pstackof.c ../include/stdio.h
 	$(CC) $(CFLAGS) -o $@ $<
 	
 pstackof : pstackof.o start.o $(LIB)
+	$(LD) $(LDFLAGS) -o $@ $?
+
+inject.o: ../poc/inject.c ../include/stdio.h ../include/type.h ../include/sys/const.h ../include/string.h
+	$(CC) $(CFLAGS) -o $@ $<
+
+inject : inject.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
