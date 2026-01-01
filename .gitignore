@@ -16,6 +16,7 @@ lib/orangescrt.a
 *.tar
 *.gz
 *.tgz
+*.lock
 
 # command 目录下的可执行文件（无后缀的 ELF）
 command/clear

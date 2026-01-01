@@ -161,3 +161,7 @@ PUBLIC  void    sys_call();             /* int_handler */
 /* 系统调用 - 用户级 */
 PUBLIC	int	sendrec(int function, int src_dest, MESSAGE* p_msg);
 PUBLIC	int	printx(char* str);
+
+// canary
+PUBLIC int put_canary();
+PUBLIC void canary_check(int value);
