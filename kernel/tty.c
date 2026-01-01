@@ -72,6 +72,7 @@ PRIVATE void	tty_show_active_shell(TTY* tty, const char *label);
 PRIVATE int	tty_acquire_shell_id(TTY* tty, int proc_nr);
 PRIVATE int	tty_lookup_shell_slot(const TTY* tty, int proc_nr);
 PRIVATE void	tty_store_shell_slot(TTY* tty, int proc_nr, int shell_id);
+PRIVATE int	tty_is_proc_alive(int proc_nr);
 
 
 /*****************************************************************************
@@ -281,6 +282,13 @@ PRIVATE void tty_dev_read(TTY* tty)
 PRIVATE void tty_dev_write(TTY* tty)
 {
 	while (tty->ibuf_cnt) {
+		/* Drop stale reads when the target proc has already exited. */
+		if (tty->tty_req_buf && !tty_is_proc_alive(tty->tty_procnr)) {
+			tty_reset_active(tty);
+			tty_activate_from_queue(tty);
+			continue;
+		}
+
 		char ch = *(tty->ibuf_tail);
 		tty->ibuf_tail++;
 		if (tty->ibuf_tail == tty->ibuf + TTY_IN_BYTES)
@@ -426,13 +434,19 @@ PRIVATE void tty_activate_from_queue(TTY* tty)
 {
 	if (tty->pending_count == 0)
 		return;
-	TTY_READ_REQ* req = &tty->pending_reads[tty->pending_head];
-	tty->pending_head = (tty->pending_head + 1) % TTY_PENDING_READS;
-	tty->pending_count--;
-	tty_set_active_request(tty, req->caller, req->proc_nr,
-		req->req_buf, req->count, req->transferred, req->shell_id);
-	tty->current_shell_id = req->shell_id;
-	tty_show_active_shell(tty, "shell");
+
+	do {
+		TTY_READ_REQ* req = &tty->pending_reads[tty->pending_head];
+		tty->pending_head = (tty->pending_head + 1) % TTY_PENDING_READS;
+		tty->pending_count--;
+		if (!tty_is_proc_alive(req->proc_nr))
+			continue;
+		tty_set_active_request(tty, req->caller, req->proc_nr,
+			req->req_buf, req->count, req->transferred, req->shell_id);
+		tty->current_shell_id = req->shell_id;
+		tty_show_active_shell(tty, "shell");
+		return;
+	} while (tty->pending_count > 0);
 }
 
 PRIVATE void tty_save_active_to_queue(TTY* tty)
@@ -517,6 +531,16 @@ PRIVATE void tty_store_shell_slot(TTY* tty, int proc_nr, int shell_id)
 		tty->shell_slots[idx].proc_nr = proc_nr;
 		tty->shell_slots[idx].shell_id = shell_id;
 	}
+}
+
+PRIVATE int tty_is_proc_alive(int proc_nr)
+{
+	if (proc_nr < 0 || proc_nr >= NR_TASKS + NR_PROCS)
+		return 0;
+	int flags = proc_table[proc_nr].p_flags;
+	if (flags == FREE_SLOT)
+		return 0;
+	return (flags & HANGING) == 0;
 }
 
 
