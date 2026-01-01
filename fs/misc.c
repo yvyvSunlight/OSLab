@@ -524,10 +524,17 @@ PUBLIC int do_refresh_checksums()
 	int seen = 0;
 	int refreshed = 0;
 	int i, j;
+	char dir_sect_buf[SECTOR_SIZE];
 
 	for (i = 0; i < nr_dir_blks; i++) {
 		RD_SECT(dev, dir_blk0 + i);
-		struct dir_entry * pde = (struct dir_entry *)fsbuf;
+		/*
+		 * 注意：calc_md5_for_file() 内部会调用 RD_SECT 并覆写 fsbuf。
+		 * 如果直接用 fsbuf 遍历目录项，pde 会在第一次算 hash 后失效。
+		 * 所以这里先把目录扇区拷贝出来，再在本地缓冲区上遍历。
+		 */
+		memcpy(dir_sect_buf, (char*)fsbuf, SECTOR_SIZE);
+		struct dir_entry * pde = (struct dir_entry *)dir_sect_buf;
 
 		for (j = 0; j < SECTOR_SIZE / DIR_ENTRY_SIZE && seen < nr_entries; j++, pde++, seen++) {
 			if (pde->inode_nr == 0)
@@ -546,7 +553,8 @@ PUBLIC int do_refresh_checksums()
 			    strcmp(name, "hdboot.bin") == 0 ||
 			    strcmp(name, "hdloader.bin") == 0)
 				continue;
-			if (strncmp(name, "dev_tty", 7) == 0)
+			/* /dev_tty0 /dev_tty1 /dev_tty2 ... */
+			if (memcmp(name, "dev_tty", 7) == 0)
 				continue;
 
 			struct inode * pin = get_inode(dev, pde->inode_nr);
@@ -565,7 +573,7 @@ PUBLIC int do_refresh_checksums()
 		}
 	}
 
-	return 0;
+	return refreshed;
 }
 
 /*****************************************************************************

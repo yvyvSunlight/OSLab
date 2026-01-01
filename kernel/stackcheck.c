@@ -273,7 +273,7 @@ PUBLIC void stackcheck_on_tick()
     {
         printl("[CHECK] Validity check started...\n");
         stackcheck_proc(p_proc_ready);
-        printl("[CHECK] Validity check finished...\n ");
+        printl("[CHECK] Validity check finished...\n");
     }
 }
 

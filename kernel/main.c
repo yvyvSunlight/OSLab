@@ -368,8 +368,9 @@ void Init()
 
 	/* 刷新所有可执行文件的校验和（每次启动都执行，与 untar 解耦） */
 	printf("[refreshing checksums...\n");
-	if (refresh_checksums() == 0) {
-		printf(" done]\n");
+	int refreshed = refresh_checksums();
+	if (refreshed >= 0) {
+		printf(" done, %d file(s) refreshed]\n", refreshed);
 	} else {
 		printf(" failed]\n");
 	}
