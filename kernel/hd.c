@@ -47,48 +47,57 @@ PRIVATE	struct hd_info	hd_info[1];
 /*****************************************************************************
  *                                task_hd
  *****************************************************************************/
-/**
- * Main loop of HD driver.
- * 
- *****************************************************************************/
 PUBLIC void task_hd()
 {
-	MESSAGE msg;
+    MESSAGE msg;
+    int val; // 存储每个分支的核心日志值
 
-	init_hd();
+    init_hd();
 
-	while (1) {
-		send_recv(RECEIVE, ANY, &msg);
+    while (1) {
+        send_recv(RECEIVE, ANY, &msg);
 
-		int src = msg.source;
+        int src = msg.source;
+        val = -1; // 默认值：未知/无结果
 
-		switch (msg.type) {
-		case DEV_OPEN:
+        switch (msg.type) {
+        case DEV_OPEN:
 			hd_open(msg.DEVICE);
+			val = 0; // 无错误则记0
+			log_hd_event(msg.type, src, msg.DEVICE, val);
 			break;
 
 		case DEV_CLOSE:
 			hd_close(msg.DEVICE);
+			val = 0; // 无错误则记0
+			log_hd_event(msg.type, src, msg.DEVICE, val);
 			break;
 
-		case DEV_READ:
-		case DEV_WRITE:
-			hd_rdwt(&msg);
-			break;
+        case DEV_READ:
+        case DEV_WRITE:
+            hd_rdwt(&msg);
+            // msg.CNT 是 hd_rdwt 填充的实际读写字节数
+            val = msg.CNT;
+            log_hd_event(msg.type, src, msg.DEVICE, val);
+            break;
 
-		case DEV_IOCTL:
-			hd_ioctl(&msg);
-			break;
+        case DEV_IOCTL:
+            hd_ioctl(&msg);
+            // msg.RETVAL 是 hd_ioctl 填充的操作返回值
+            val = msg.RETVAL;
+            log_hd_event(msg.type, src, msg.DEVICE, val);
+            break;
 
-		default:
-			dump_msg("HD driver::unknown msg", &msg);
-			spin("FS::main_loop (invalid msg.type)");
-			break;
-		}
-		log_hd_event(msg.type, src, msg.DEVICE, -1);
+        default:
+            dump_msg("HD driver::unknown msg", &msg);
+            // 未知操作，val 保留 -1，先记录日志再死循环
+            log_hd_event(msg.type, src, msg.DEVICE, val);
+            spin("FS::main_loop (invalid msg.type)");
+            break;
+        }
 
-		send_recv(SEND, src, &msg);
-	}
+        send_recv(SEND, src, &msg);
+    }
 }
 
 /*****************************************************************************

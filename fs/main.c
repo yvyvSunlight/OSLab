@@ -51,47 +51,60 @@ PUBLIC void task_fs()
 		switch (msgtype) {
 		case OPEN:
 			fs_msg.FD = do_open();
+			log_fs_event(msgtype, src, fs_msg.FD);
 			break;
 		case CLOSE:
 			fs_msg.RETVAL = do_close();
+			log_fs_event(msgtype, src, fs_msg.RETVAL);
 			break;
 		case READ:
 		case WRITE:
 			fs_msg.CNT = do_rdwt();
+			log_fs_event(msgtype, src, fs_msg.CNT);
 			break;
 		case UNLINK:
 			fs_msg.RETVAL = do_unlink();
+			log_fs_event(msgtype, src, fs_msg.RETVAL);
 			break;
 		case SET_CHECKSUM:
 			fs_msg.RETVAL = do_set_checksum();
+			log_fs_event(msgtype, src, fs_msg.RETVAL);
 			break;
 		case GET_CHECKSUM:
 			fs_msg.RETVAL = do_get_checksum();
+			log_fs_event(msgtype, src, fs_msg.RETVAL);
 			break;
 		case RESUME_PROC:
+			log_fs_event(msgtype, src, fs_msg.PROC_NR);
 			src = fs_msg.PROC_NR;
 			break;
 		case FORK:
 			fs_msg.RETVAL = fs_fork();
+			log_fs_event(msgtype, src, fs_msg.RETVAL);
 			break;
 		case EXIT:
 			fs_msg.RETVAL = fs_exit();
+			log_fs_event(msgtype, src, fs_msg.RETVAL);
 			break;
 		case LSEEK:
 			fs_msg.OFFSET = do_lseek();
+			log_fs_event(msgtype, src, fs_msg.OFFSET);
 			break;
 		case STAT:
 			fs_msg.RETVAL = do_stat();
+			log_fs_event(msgtype, src, fs_msg.RETVAL);
 			break;
 		case TRUNCATE:
 			fs_msg.RETVAL = do_truncate();
+			log_fs_event(msgtype, src, fs_msg.RETVAL);
 			break;
 		default:
 			dump_msg("FS::unknown message:", &fs_msg);
+			log_fs_event(msgtype, src, -1);
 			assert(0);
 			break;
 		}
-		log_fs_event(msgtype, src, -1);
+		//log_fs_event(msgtype, src, -1);
 
 #ifdef ENABLE_DISK_LOG
 		char * msg_name[128];

@@ -69,6 +69,7 @@ PUBLIC void task_mm()
 			break;
 		default:
 			dump_msg("MM::unknown msg", &mm_msg);
+			log_mm_event(msgtype, src, -1);
 			assert(0);
 			break;
 		}

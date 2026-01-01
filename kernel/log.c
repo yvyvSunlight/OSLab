@@ -55,7 +55,7 @@
 #define FS_LOG_MAX_FILE   (64 * 1024)
 #define HD_LOG_MAX_FILE   (64 * 1024)
 
-/* 是否把日志同时printl到控制台（IO重时建议关掉） */
+/* 是否把日志同时printl到控制台 */
 #define LOG_ECHO_CONSOLE  0
 
 /* =========================================================
@@ -446,12 +446,12 @@ void log_sys_event(int msgtype, int src, int val)
 
     if (val == -1) {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d] SYS_%s\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d] SYS_%s\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, sys_type_name(msgtype));
     } else {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d] SYS_%s val=%d\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d] SYS_%s val=%d\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, sys_type_name(msgtype), val);
     }
@@ -474,12 +474,12 @@ void log_mm_event(int msgtype, int src, int val)
 
     if (val == -1) {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d] MM_%s\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d] MM_%s\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, mm_type_name(msgtype));
     } else {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d] MM_%s val=%d\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d] MM_%s val=%d\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, mm_type_name(msgtype), val);
     }
@@ -503,12 +503,12 @@ void log_fs_event(int msgtype, int src, int val)
 
     if (val == -1) {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d] FS_%s\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d] FS_%s\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, fs_type_name(msgtype));
     } else {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d] FS_%s val=%d\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d] FS_%s val=%d\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, fs_type_name(msgtype), val);
     }
@@ -532,12 +532,12 @@ void log_hd_event(int msgtype, int src, int dev, int val)
 
     if (val == -1) {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d dev=%d] HD_%s\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d dev=%d] HD_%s\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, dev, hd_type_name(msgtype));
     } else {
         n = sprintf(line,
-            "<%d-%02d-%02d %02d:%02d:%02d> [src=%d dev=%d] HD_%s val=%d\n",
+            "<%d-%02d-%02d %02d:%02d:%02d>\n [src=%d dev=%d] HD_%s val=%d\n",
             t.year, t.month, t.day, t.hour, t.minute, t.second,
             src, dev, hd_type_name(msgtype), val);
     }
