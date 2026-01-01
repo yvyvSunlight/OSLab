@@ -21,6 +21,26 @@
 #include "proto.h"
 #include "elf.h"
 
+// /* Get segment base and limit (in bytes) from a descriptor */
+// PRIVATE void get_seg_info(struct descriptor *d, u32 *base, u32 *limit_bytes)
+// {
+// 	u32 b = ((u32)d->base_high << 24) | ((u32)d->base_mid << 16) | d->base_low;
+
+// 	u32 limit_raw = ((u32)(d->limit_high_attr2 & 0x0F) << 16) | d->limit_low;
+
+// 	u32 bytes;
+// 	if (d->limit_high_attr2 & (DA_LIMIT_4K >> 8))
+// 	{
+// 		bytes = (limit_raw + 1) << 12;
+// 	}
+// 	else
+// 	{
+// 		bytes = limit_raw + 1;
+// 	}
+
+// 	*base = b;
+// 	*limit_bytes = bytes;
+// }
 
 /*****************************************************************************
  *                                do_exec
@@ -103,6 +123,12 @@ PUBLIC int do_exec()
 	/* setup eip & esp */
 	proc_table[src].regs.eip = elf_hdr->e_entry; /* @see _start.asm */
 	proc_table[src].regs.esp = PROC_IMAGE_SIZE_DEFAULT - PROC_ORIGIN_STACK;
+
+	// /* init stack bounds for stack NX checks (linear addresses) */
+	// u32 seg_base, seg_limit_bytes;
+	// get_seg_info(&proc_table[src].ldts[INDEX_LDT_RW], &seg_base, &seg_limit_bytes);
+	proc_table[src].stack_low = proc_table[src].regs.esp;
+	proc_table[src].stack_high = PROC_IMAGE_SIZE_DEFAULT;
 
 	strcpy(proc_table[src].name, pathname);
 

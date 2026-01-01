@@ -13,13 +13,6 @@
 
 #ifdef ENABLE_STACKCHECK
 
-// Get the linear address range of task_stack (for TASK/NATIVE processes)
-PRIVATE void get_task_stack_range(u32 *low, u32 *high)
-{
-    *low = (u32)task_stack;
-    *high = (u32)(task_stack + STACK_SIZE_TOTAL);
-}
-
 // Get segment base and limit (in bytes) from LDT descriptor
 PRIVATE void get_seg_info(struct descriptor *d, u32 *base, u32 *limit_bytes)
 {
@@ -39,27 +32,6 @@ PRIVATE void get_seg_info(struct descriptor *d, u32 *base, u32 *limit_bytes)
 
     *base = b;
     *limit_bytes = bytes;
-}
-
-// Get kernel text range (for return address validation of TASK/NATIVE)
-PRIVATE void get_kernel_text_range(u32 *begin, u32 *end)
-{
-    static int inited = 0;
-    static u32 k_base = 0, k_limit = 0;
-
-    if (!inited)
-    {
-        unsigned int b = 0, l = 0;
-        if (get_kernel_map(&b, &l) == 0)
-        {
-            k_base = (u32)b;
-            k_limit = (u32)l;
-        }
-        inited = 1;
-    }
-
-    *begin = k_base;
-    *end = k_base + k_limit;
 }
 
 // Determine process type
@@ -107,32 +79,35 @@ PRIVATE void get_stack_bounds(struct proc *p, int pid, u32 *low, u32 *high, int 
         u32 seg_base, seg_limit;
         get_seg_info(&p->ldts[INDEX_LDT_RW], &seg_base, &seg_limit);
 
-        *low = seg_base;
-        *high = seg_base + seg_limit;
+        // u32 esp_la = seg_base + p->regs.esp;
+
+        // /* stack_high: top (exclusive); stack_low: lowest ESP ever seen (low-water mark) */
+        // p->stack_high = seg_base + seg_limit;
+        // if (p->stack_low < seg_base || p->stack_low >= p->stack_high)
+        // {
+        //     p->stack_low = esp_la;
+        // }
+        if (p->regs.eip < p->stack_low)
+        {
+            p->stack_low = p->regs.eip;
+        }
+
+        *low = p->stack_low;
+        *high = p->stack_high;
     }
     else
     {
         *is_user = 0;
 
-        // if (p->stack_low != 0 && p->stack_high != 0 && p->stack_low < p->stack_high)
-        // {
         *low = p->stack_low;
         *high = p->stack_high;
-        // }
-        // else
-        // {
-        //     get_task_stack_range(low, high);
-        // }
     }
 }
 
 PRIVATE int is_ret_valid_task_native(u32 ret_la)
 {
-    u32 task_stack_low, task_stack_high;
-    get_task_stack_range(&task_stack_low, &task_stack_high);
-
     // 栈不可执行（NX）
-    if (ret_la >= task_stack_low && ret_la < task_stack_high)
+    if (ret_la >= task_stack && ret_la < task_stack + STACK_SIZE_TOTAL)
     {
         return 0;
     }
@@ -175,9 +150,21 @@ PUBLIC void stackcheck_proc(struct proc *p)
     get_stack_bounds(p, pid, &stack_low, &stack_high, &is_user);
 
     u32 seg_base = 0, seg_limit = 0;
+
+    get_seg_info(&p->ldts[INDEX_LDT_RW], &seg_base, &seg_limit);
     if (is_user)
     {
         get_seg_info(&p->ldts[INDEX_LDT_RW], &seg_base, &seg_limit);
+
+        // 栈NX：EIP 进入“历史栈范围”直接判定ret2stack
+        // u32 eip_la = seg_base + p->regs.eip;
+        // if (eip_la >= stack_low && eip_la < stack_high)
+        if (p->regs.eip >= stack_low && p->regs.eip < stack_high)
+        {
+            panic("[STACKNX] USER pid=%d name=%s: eip=0x%x in stack [0x%x,0x%x)\n",
+                  pid, p->name, p->regs.eip, stack_low, stack_high);
+            return;
+        }
     }
 
     u32 ebp_off = p->regs.ebp;
@@ -230,7 +217,7 @@ PUBLIC void stackcheck_proc(struct proc *p)
         if (!ret_valid)
         {
             panic("[STACKCHK] %s pid=%d name=%s frame=%d: INVALID ret=0x%x at ebp=0x%x\n",
-                   get_proc_type_name(pid), pid, p->name, frame_count, ret_addr_off, ebp_la);
+                  get_proc_type_name(pid), pid, p->name, frame_count, ret_addr_off, ebp_la);
             return;
         }
 
