@@ -59,10 +59,11 @@
 #define LOG_ECHO_CONSOLE  0
 
 /* =========================================================
- *  IRQ save/restore (nest-safe)
+ *  嵌套锁实现
  * ========================================================= */
-#define EFLAGS_IF 0x200
+#define EFLAGS_IF 0x200 // 定义中断允许标志位
 
+// 安全读取EFLAGS寄存器
 static inline u32 read_eflags(void)
 {
     u32 f;
@@ -70,9 +71,10 @@ static inline u32 read_eflags(void)
     return f;
 }
 
-static int g_log_nest = 0;
-static int g_log_prev_if = 0;
+static int g_log_nest = 0;       // 嵌套层
+static int g_log_prev_if = 0;    // 上一层是否允许中断
 
+// 加锁（支持嵌套）
 static void log_lock(void)
 {
     if (g_log_nest == 0) {
@@ -82,6 +84,7 @@ static void log_lock(void)
     g_log_nest++;
 }
 
+// 解锁（支持嵌套）
 static void log_unlock(void)
 {
     g_log_nest--;
@@ -106,6 +109,7 @@ void log_sys_enable(int enable) { g_sys_log_enabled = (enable != 0); }
 void log_fs_enable(int enable)  { g_fs_log_enabled  = (enable != 0); }
 void log_hd_enable(int enable)  { g_hd_log_enabled  = (enable != 0); }
 
+// 抑制日志，防止进入循环
 static void suppress_begin(int set_fs, int set_hd, volatile int* self_flag)
 {
     log_lock();
@@ -115,6 +119,7 @@ static void suppress_begin(int set_fs, int set_hd, volatile int* self_flag)
     log_unlock();
 }
 
+// 结束抑制日志
 static void suppress_end(int set_fs, int set_hd, volatile int* self_flag)
 {
     log_lock();
@@ -125,7 +130,7 @@ static void suppress_end(int set_fs, int set_hd, volatile int* self_flag)
 }
 
 /* =========================================================
- * RTC（按你原来的实现保留：清晰、简单）
+ * RTC
  * ========================================================= */
 static int read_register_log(char reg_addr)
 {
@@ -155,7 +160,7 @@ static int get_rtc_time_log(struct time *t)
 }
 
 /* =========================================================
- * ring buffer (统一实现)
+ * ring buffer
  * ========================================================= */
 typedef struct ringbuf {
     char* buf;
@@ -264,7 +269,7 @@ static ringbuf_t g_fs_rb  = { g_fs_ring,  FS_RING_SIZE,  0, 0 };
 static ringbuf_t g_hd_rb  = { g_hd_ring,  HD_RING_SIZE,  0, 0 };
 
 /* =========================================================
- * name helpers
+ * name
  * ========================================================= */
 static const char* mm_type_name(int msgtype)
 {
