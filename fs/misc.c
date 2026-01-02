@@ -23,6 +23,8 @@
 #include "proto.h"
 #include "hd.h"
 
+#include "sys/cmd_whitelist.h"
+
 /* ============================================================
  * checksum key: FS private (never stored or returned)
  * ============================================================ */
@@ -544,17 +546,8 @@ PUBLIC int do_refresh_checksums()
 			memcpy(name, pde->name, MAX_FILENAME_LEN);
 			name[MAX_FILENAME_LEN] = 0;
 
-			/* 跳过特殊文件 */
-			if (name[0] == '.')
-				continue;
-			if (strcmp(name, "cmd.tar") == 0)
-				continue;
-			if (strcmp(name, "kernel.bin") == 0 ||
-			    strcmp(name, "hdboot.bin") == 0 ||
-			    strcmp(name, "hdloader.bin") == 0)
-				continue;
-			/* /dev_tty0 /dev_tty1 /dev_tty2 ... */
-			if (memcmp(name, "dev_tty", 7) == 0)
+			/* 白名单：仅对已实现的系统命令刷新校验和 */
+			if (!is_syscmd_whitelisted(name))
 				continue;
 
 			struct inode * pin = get_inode(dev, pde->inode_nr);

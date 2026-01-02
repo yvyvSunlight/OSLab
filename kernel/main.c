@@ -16,6 +16,8 @@
 #include "global.h"
 #include "proto.h"
 
+#include "sys/cmd_whitelist.h"
+
 #define SHELLS_PER_TTY 2
 
 /*****************************************************************************
@@ -197,9 +199,11 @@ struct posix_tar_header
 
 PRIVATE int should_skip_checksum(const char *name)
 {
-	return strcmp(name, "kernel.bin") == 0 ||
-		   strcmp(name, "hdboot.bin") == 0 ||
-		   strcmp(name, "hdloader.bin") == 0;
+	/*
+	 * 白名单校验：只有白名单中的系统命令才做校验。
+	 * 其它文件（如 kernel.bin/hdboot.bin/hdloader.bin/cmd.tar/dev_tty* 等）默认跳过。
+	 */
+	return !is_syscmd_whitelisted(name);
 }
 
 /*****************************************************************************
