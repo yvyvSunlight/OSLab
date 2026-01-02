@@ -19,6 +19,7 @@
 
 #define MLFQ_LEVELS        3
 #define MLFQ_MAX_LEVEL     (MLFQ_LEVELS - 1)
+/* Periodically reset queues to give short jobs another chance. */
 #define MLFQ_BOOST_INTERVAL 200
 
 PRIVATE int last_mlfq_boost = 0;
@@ -123,23 +124,27 @@ PUBLIC int mlfq_should_preempt_current(void)
  *****************************************************************************/
 PUBLIC void schedule()
 {
-	struct proc* p;
-	struct proc* best = 0;
-	int best_level = MLFQ_LEVELS;
-
 	mlfq_maybe_boost();
 
-	for (p = &FIRST_PROC; p <= &LAST_PROC; p++) {
-		if (p->p_flags != 0)
-			continue;
-		if (p->ticks <= 0)
-			mlfq_reset_ticks(p);
-		if (!best ||
-		    p->queue_level < best_level ||
-		    (p->queue_level == best_level && p->ticks > best->ticks)) {
-			best = p;
-			best_level = p->queue_level;
+	struct proc* best = 0;
+	int level;
+
+	/* Pick the highest-priority (lowest level) runnable queue first. */
+	for (level = 0; level <= MLFQ_MAX_LEVEL; level++) {
+		struct proc* p;
+		for (p = &FIRST_PROC; p <= &LAST_PROC; p++) {
+			if (p->p_flags != 0)
+				continue;
+			if (p->queue_level != level)
+				continue;
+			if (p->ticks <= 0)
+				mlfq_reset_ticks(p);
+			if (!best || p->ticks > best->ticks) {
+				best = p;
+			}
 		}
+		if (best)
+			break;
 	}
 
 	if (!best) {
@@ -296,7 +301,6 @@ PRIVATE void block(struct proc* p)
 PRIVATE void unblock(struct proc* p)
 {
 	assert(p->p_flags == 0);
-	mlfq_reset_ticks(p);
 }
 
 /*****************************************************************************

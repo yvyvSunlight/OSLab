@@ -19,6 +19,8 @@
 #include "sys/cmd_whitelist.h"
 
 #define SHELLS_PER_TTY 2
+#define DEMO_PRINT_INTERVAL_MS 200
+#define TESTC_START_DELAY_MS 1500
 
 /*****************************************************************************
  *                               kernel_main
@@ -458,9 +460,11 @@ void Init()
  *======================================================================*/
 void TestA()
 {
+	int iter = 0;
 	while (1)
 	{
-		printl("TestA is running~~~~~~~~~~\n");
+		printl("A#%d\n", iter++);
+		milli_delay(DEMO_PRINT_INTERVAL_MS);
 	}
 }
 
@@ -469,20 +473,27 @@ void TestA()
  *======================================================================*/
 void TestB()
 {
+	int iter = 0;
 	while (1)
 	{
-		printl("TestB is running~~~~~~~~~~\n");
+		printl("B#%d\n", iter++);
+		milli_delay(DEMO_PRINT_INTERVAL_MS);
 	}
 }
 
 /*======================================================================*
-							   TestB
+							   TestC
  *======================================================================*/
 void TestC()
 {
+	/* Start a bit later to show preemption when it joins. */
+	milli_delay(TESTC_START_DELAY_MS);
+
+	int iter = 0;
 	while (1)
 	{
-		printl("TestC is running~~~~~~~~~~\n");
+		printl("C#%d\n", iter++);
+		milli_delay(DEMO_PRINT_INTERVAL_MS);
 	}
 }
 
