@@ -49,10 +49,7 @@ PUBLIC void task_log(void)
     delay_ms_light(2000);
 
     while (1) {
-        /*
-         * 关键：如果没有 flush 请求，就阻塞睡眠等待消息唤醒；
-         * 如果有 flush 请求（可能在 flush 过程中又来了），就直接 flush，不睡。
-         */
+        // 如果没有 flush 请求，就阻塞睡眠等待消息唤醒
         if (!log_fetch_and_clear_flush_req()) {
             reset_msg(&msg);
             send_recv(RECEIVE, ANY, &msg);
