@@ -51,6 +51,10 @@ PUBLIC void clock_handler(int irq)
 
 	if (p_proc_ready->ticks > 0)
 	{
+		if (mlfq_should_preempt_current())
+		{
+			schedule();
+		}
 		return;
 	}
 
