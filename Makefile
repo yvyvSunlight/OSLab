@@ -25,7 +25,7 @@ DASMFLAGS	= -D
 ARFLAGS		= rcs
 
 # This Program
-ORANGESBOOT	= boot/boot.bin boot/hdboot.bin boot/loader.bin boot/hdloader.bin
+ORANGESBOOT	= boot/boot.bin boot/hdboot.bin boot/loader.bin boot/hdldr.bin
 ORANGESKERNEL	= kernel.bin
 LIB		= lib/orangescrt.a
 
@@ -98,7 +98,7 @@ boot/hdboot.bin : boot/hdboot.asm boot/include/load.inc boot/include/fat12hdr.in
 boot/loader.bin : boot/loader.asm boot/include/load.inc boot/include/fat12hdr.inc boot/include/pm.inc
 	$(ASM) $(ASMBFLAGS) -o $@ $<
 
-boot/hdloader.bin : boot/hdloader.asm boot/include/load.inc boot/include/fat12hdr.inc boot/include/pm.inc
+boot/hdldr.bin : boot/hdldr.asm boot/include/load.inc boot/include/fat12hdr.inc boot/include/pm.inc
 	$(ASM) $(ASMBFLAGS) -o $@ $<
 
 # $^相当于一个宏，代表所有依赖（去重后），所以下面的链接指令才能将所有的依赖都链接进来

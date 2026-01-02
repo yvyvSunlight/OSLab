@@ -12,7 +12,6 @@ int set_checksum(const char *pathname, int checksum);
 
 
 /* 函数声明 */
-void cal_addr(int entry, int addr[]);
 void inject(char* elf_file);
 void insert(Elf32_Ehdr elf_ehdr, char* elf_file, int old_entry);
 u8 popcount8(u8 b);

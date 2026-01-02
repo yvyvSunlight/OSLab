@@ -29,9 +29,8 @@ PRIVATE void ensure_checksum_key_inited(void)
 	}
 }
 
-/* ============================================================
- * MD5 实现
- * ============================================================ */
+
+// MD5 实现
 typedef struct {
 	u32 state[4];
 	u32 count[2];
@@ -259,17 +258,6 @@ PRIVATE void bytes_to_hex(u8 *bytes, int len, char *hex_str)
 	hex_str[len * 2] = '\0';
 }
 
-/*****************************************************************************
- *                         calc_md5_for_file
- *****************************************************************************/
-/**
- * FS 内部：计算 MD5(key || file_content || key)
- * 按扇区循环读取，避免一次性大内存分配
- *
- * @param pin   指向文件的 inode（必须是普通文件）
- * @param out   输出缓冲区，至少 MD5_STR_BUF_LEN (33) 字节
- * @return      0 成功，-1 失败
- */
 PRIVATE int calc_md5_for_file(struct inode *pin, char out[MD5_STR_BUF_LEN])
 {
 	u8 digest[16];
@@ -362,10 +350,6 @@ PUBLIC int do_stat()
 	return 0;
 }
 
-/****************************************************************************
- *                           do_calc_checksum
- *****************************************************************************/
-/* FS 内部计算 MD5(key||file||key)，返回 32 字节 hex 字符串 */
 PUBLIC int do_calc_checksum()
 {
 	char pathname[MAX_PATH];
@@ -403,10 +387,6 @@ PUBLIC int do_calc_checksum()
 	return 0;
 }
 
-/****************************************************************************
- *                           do_verify_checksum
- *****************************************************************************/
-/* FS 内部计算并与 inode 存储值比对，0=OK -1=FAIL */
 PUBLIC int do_verify_checksum()
 {
 	char pathname[MAX_PATH];
@@ -449,15 +429,6 @@ PUBLIC int do_verify_checksum()
 	return 0;
 }
 
-/*****************************************************************************
- *                           do_refresh_checksums
- *****************************************************************************/
-/**
- * 刷新根目录下所有可执行文件的校验和
- * 仅允许 INIT 进程调用，遍历根目录下所有普通文件，用当前 key 重新计算并写入 inode
- * 
- * @return  0 成功，-1 失败（非 INIT 调用）
- */
 PUBLIC int do_refresh_checksums()
 {
 	int src = fs_msg.source;
