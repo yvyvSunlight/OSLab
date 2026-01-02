@@ -354,6 +354,7 @@ void shabby_shell(const char *tty_name)
 		}
 		else
 		{
+			close(fd);
 			int need_checksum = is_syscmd_whitelisted(argv[0]);
 			if (need_checksum)
 			{
