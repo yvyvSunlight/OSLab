@@ -403,7 +403,7 @@ void Init()
 	/* extract `cmd.tar' */
 	untar("/cmd.tar");
 
-	/* 刷新所有可执行文件的校验和（每次启动都执行，与 untar 解耦） */
+	//  刷新所有可执行文件的校验和（每次启动都执行，与untar解耦）
 	printf("[refreshing checksums...\n");
 	int refreshed = refresh_checksums();
 	if (refreshed >= 0)

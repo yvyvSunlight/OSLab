@@ -512,7 +512,7 @@ PUBLIC int do_refresh_checksums()
 {
 	int src = fs_msg.source;
 
-	/* 仅允许 INIT 进程调用，防止普通用户绕过校验 */
+	// 仅允许 INIT 进程调用，防止普通用户绕过校验
 	if (src != INIT)
 		return -1;
 
