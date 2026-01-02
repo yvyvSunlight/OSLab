@@ -142,6 +142,7 @@ PUBLIC	void	dump_msg(const char * title, MESSAGE* m);
 PUBLIC	void	dump_proc(struct proc * p);
 PUBLIC	int	send_recv(int function, int src_dest, MESSAGE* msg);
 PUBLIC void	inform_int(int task_nr);
+PUBLIC int	mlfq_should_preempt_current();
 
 /* lib/misc.c */
 PUBLIC void spin(char * func_name);

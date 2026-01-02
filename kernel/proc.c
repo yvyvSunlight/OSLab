@@ -29,6 +29,7 @@ PRIVATE void mlfq_demote(struct proc* p);
 PRIVATE void mlfq_promote_all(void);
 PRIVATE void mlfq_maybe_boost(void);
 PRIVATE int  mlfq_elapsed_since_last_boost(void);
+PUBLIC  int  mlfq_should_preempt_current(void);
 
 PRIVATE void block(struct proc* p);
 PRIVATE void unblock(struct proc* p);
@@ -91,6 +92,26 @@ PRIVATE void mlfq_maybe_boost(void)
 		mlfq_promote_all();
 		last_mlfq_boost = ticks;
 	}
+}
+
+PUBLIC int mlfq_should_preempt_current(void)
+{
+	struct proc* current = p_proc_ready;
+	struct proc* p;
+
+	if (!current)
+		return 0;
+
+	for (p = &FIRST_PROC; p <= &LAST_PROC; p++) {
+		if (p->p_flags != 0)
+			continue;
+		if (p == current)
+			continue;
+		if (p->queue_level < current->queue_level)
+			return 1;
+	}
+
+	return 0;
 }
 
 /*****************************************************************************
