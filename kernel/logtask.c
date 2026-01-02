@@ -19,12 +19,13 @@
 #include "proto.h"
 #include "log.h"
 
+/* x86 下 pause 是非特权指令：降低忙等对CPU/虚拟机的压力 */
 static inline void cpu_relax(void)
 {
     __asm__ __volatile__("pause");
 }
 
-// 仅用于启动初期等待，保持原行为
+/* 仅用于启动初期等待（一次性），保持原行为 */
 static void delay_ms_light(int ms)
 {
     int dt = (ms * HZ) / 1000;
@@ -44,7 +45,7 @@ PUBLIC void task_log(void)
 {
     MESSAGE msg;
 
-    // 初始给 FS/HD 初始化留时间
+    /* 给 FS/HD 初始化留时间：保持原行为 */
     delay_ms_light(2000);
 
     while (1) {
@@ -52,11 +53,11 @@ PUBLIC void task_log(void)
         if (!log_fetch_and_clear_flush_req()) {
             reset_msg(&msg);
             send_recv(RECEIVE, ANY, &msg);
-
+            /* 醒来后再清一次，合并多次 kick */
             (void)log_fetch_and_clear_flush_req();
         }
 
-        // flush 四类日志，写入文件
+        /* flush 四类日志（flush_common 内部会判空） */
         log_mm_flush();
         log_sys_flush();
         log_fs_flush();

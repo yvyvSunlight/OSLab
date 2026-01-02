@@ -1,6 +1,6 @@
 /*
 @Author  : Ramoor
-@Date    : 2026-01-01
+@Date    : 2025-12-30
 @Update  : 2026-01-02
 */
 
@@ -56,7 +56,7 @@
 #define LOG_FLUSH_HIWAT_BYTES (4 * 1024)
 
 #ifndef TASK_LOG
-#error "TASK_LOG is not defined. Please define TASK_LOG as the proc_table index of task_log."
+#error "TASK_LOG is not defined."
 #endif
 
 /* =========================================================
@@ -92,10 +92,11 @@ static void log_unlock(void)
 }
 
 /* =========================================================
- * flush 请求聚合标志（task_log 用它决定是否睡眠）
+ * flush 请求标志
  * ========================================================= */
 static volatile int g_log_flush_req = 0;
 
+// flush 请求
 PUBLIC void log_set_flush_req(void)
 {
     log_lock();
@@ -103,6 +104,7 @@ PUBLIC void log_set_flush_req(void)
     log_unlock();
 }
 
+// 获取并清除 flush 请求
 PUBLIC int log_fetch_and_clear_flush_req(void)
 {
     int v;
@@ -119,6 +121,7 @@ PUBLIC int log_fetch_and_clear_flush_req(void)
 static volatile int g_fs_suppress = 0;
 static volatile int g_hd_suppress = 0;
 
+// 抑制 fs/hd flush，防止循环
 static void suppress_begin(int set_fs, int set_hd, volatile int* self_flag)
 {
     log_lock();
@@ -169,7 +172,6 @@ static int get_rtc_time_log(struct time *t)
 
 /* =========================================================
  * 仅在 task_log 正在 RECEIVE(ANY/INTERRUPT) 阻塞时，注入一个 HARD_INT 唤醒
- * 注意：这里绝对不要设置 has_int_msg=1（会触发 proc.c 的断言）
  * ========================================================= */
 static void log_try_wakeup_tasklog_nolock(void)
 {
@@ -185,7 +187,6 @@ static void log_try_wakeup_tasklog_nolock(void)
         p->p_msg = 0;
         p->p_flags &= ~RECEIVING;
         p->p_recvfrom = NO_TASK;
-        /* 不要碰 has_int_msg */
     }
 }
 
@@ -218,6 +219,7 @@ static void ring_drop_oldest_nolock(ringbuf_t* r, int bytes)
     }
 }
 
+// 将数据写入到 ring buffer
 static void ring_push(ringbuf_t* r, const char* s, int len)
 {
     if (!r || !s || len <= 0) return;
@@ -254,7 +256,7 @@ static void ring_push(ringbuf_t* r, const char* s, int len)
         }
     }
 
-    /* 事件驱动：达到阈值触发一次唤醒（用 kick_armed 防抖） */
+    /* 事件驱动：达到阈值触发一次唤醒 */
     {
         int used = ring_used_nolock(r);
         if (!r->kick_armed && used >= LOG_FLUSH_HIWAT_BYTES) {
@@ -268,6 +270,7 @@ static void ring_push(ringbuf_t* r, const char* s, int len)
     log_unlock();
 }
 
+// 从 ring buffer 读取数据
 static int ring_pop(ringbuf_t* r, char* out, int maxlen)
 {
     int used, n, cont, left;
@@ -356,7 +359,6 @@ static const char* fs_type_name(int msgtype)
     case EXIT:   return "EXIT";
     case STAT:   return "STAT";
     case TRUNCATE: return "TRUNCATE";
-    case GET_CHECKSUM: return "GET_CHECKSUM";
     case CALC_CHECKSUM: return "CALC_CHECKSUM";
     case VERIFY_CHECKSUM: return "VERIFY_CHECKSUM";
     default:     return "UNKNOWN";
@@ -378,6 +380,7 @@ static const char* hd_type_name(int msgtype)
 /* =========================================================
  * IO helpers
  * ========================================================= */
+// 打开文件，若超过 max_bytes 则删除重建
 static int open_append_rotate(const char* path, int max_bytes)
 {
     int fd = open(path, O_RDWR);
@@ -398,6 +401,7 @@ static int open_append_rotate(const char* path, int max_bytes)
     return fd;
 }
 
+// 正常写入
 static int write_all_once(int fd, const char* buf, int n)
 {
     int off = 0;
@@ -409,6 +413,7 @@ static int write_all_once(int fd, const char* buf, int n)
     return off;
 }
 
+// 写入并可能重置文件
 static void write_all_may_rotate(int* pfd, const char* path, int max_file,
                                 const char* buf, int n)
 {
@@ -441,10 +446,11 @@ static void write_all_may_rotate(int* pfd, const char* path, int max_file,
 /* =========================================================
  * flush common（统一模板）
  * ========================================================= */
+// 将数据写入文件
 static void flush_common(ringbuf_t* rb, const char* path, int max_file,
                         int suppress_fs, int suppress_hd, volatile int* self_flag_to_set)
 {
-    /* ✅ 关键优化：512 -> 4096 */
+    /* 关键优化：512 -> 4096 */
     char tmp[4096];
     int n;
 
@@ -480,8 +486,9 @@ static void flush_common(ringbuf_t* rb, const char* path, int max_file,
 }
 
 /* =========================================================
- * event APIs: 只写ring（不落盘）
+ * event APIs: 只写缓冲区
  * ========================================================= */
+// 采集日志信息
 void log_sys_event(int msgtype, int src, int val)
 {
     struct time t;
