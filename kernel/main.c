@@ -16,6 +16,8 @@
 #include "global.h"
 #include "proto.h"
 
+#include "sys/cmd_whitelist.h"
+
 #define SHELLS_PER_TTY 2
 
 /*****************************************************************************
@@ -195,13 +197,6 @@ struct posix_tar_header
 						/* 500 */
 };
 
-PRIVATE int should_skip_checksum(const char *name)
-{
-	return strcmp(name, "kernel.bin") == 0 ||
-		   strcmp(name, "hdboot.bin") == 0 ||
-		   strcmp(name, "hdloader.bin") == 0;
-}
-
 /*****************************************************************************
  *                                untar
  *****************************************************************************/
@@ -344,6 +339,9 @@ void shabby_shell(const char *tty_name)
 		if (argc == 0)
 			continue;
 
+		if (strcmp(argv[0], "/") == 0)
+			continue;
+		
 		int fd = open(argv[0], O_RDWR); // 拿到命令文件的文件描述符
 		if (fd == -1)
 		{
@@ -356,7 +354,8 @@ void shabby_shell(const char *tty_name)
 		}
 		else
 		{
-			int need_checksum = !should_skip_checksum(argv[0]);
+			close(fd);
+			int need_checksum = is_syscmd_whitelisted(argv[0]);
 			if (need_checksum)
 			{
 				if (verify_checksum(argv[0]) != 0)

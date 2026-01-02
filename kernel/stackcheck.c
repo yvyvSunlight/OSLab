@@ -83,7 +83,7 @@ PRIVATE void retaddr_check_user(struct proc *p, int pid)
             return;
         }
         ret_addr = *(u32*)(ebp_la + 4);
-        if(ret_addr >= seg_limit || (ret_addr >= p->stack_low && ret_addr < p->stack_high))
+        if(ret_addr >= p->stack_low && ret_addr < p->stack_high)
         {
             panic("[RETADDR CHECK] USER pid=%d name=%s frame=%d: INVALID ret_addr=0x%x in stack [0x%x,0x%x)\n",
                   pid, p->name, frame_count, ret_addr, p->stack_low, p->stack_high);

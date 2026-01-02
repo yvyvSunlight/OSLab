@@ -153,7 +153,7 @@ PRIVATE u32 read_rtc_timestamp()
         year  = bcd_to_bin(year);
     }
     
-    /* year是两位数，假设是20xx年 */
+    /* year是两位数，这里手动拼成20xx年 */
     int full_year = 2000 + year;
     
     return calc_timestamp(full_year, month, day, hour, min, sec);
