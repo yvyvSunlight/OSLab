@@ -30,4 +30,7 @@ void log_hd_event(int msgtype, int src, int dev, int val);
 void log_fs_flush(void);
 void log_hd_flush(void);
 
+PUBLIC int  log_fetch_and_clear_flush_req(void);
+PUBLIC void log_set_flush_req(void);
+
 #endif
