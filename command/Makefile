@@ -13,7 +13,7 @@ LDFLAGS		= -Ttext 0x1000
 DASMFLAGS	= -D
 LIB		= ../lib/orangescrt.a
 # BIN		= echo pwd ls kill touch edit rm ps clear cat ret2txt ret2sh ret2lib pstof inject
-BIN		= echo pwd ls kill touch edit rm ps clear cat ret2txt ret2sh ret2lib pstof 
+BIN		= echo pwd ls kill touch edit rm ps clear cat ret2txt ret2sh ret2lib pstof msg
 
 
 # All Phony Targets
@@ -134,8 +134,8 @@ inject.o: ../poc/inject.c ../include/stdio.h ../include/type.h ../include/sys/co
 inject : inject.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
-# msg.o: ../poc/msg.c ../include/stdio.h ../include/type.h ../include/string.h ../include/sys/const.h ../include/sys/proto.h
-# 	$(CC) $(CFLAGS) -o $@ $<
+msg.o: ../poc/msg.c ../include/stdio.h ../include/type.h ../include/string.h ../include/sys/const.h
+	$(CC) $(CFLAGS) -o $@ $<
 
-# msg : msg.o start.o $(LIB)
-# 	$(LD) $(LDFLAGS) -o $@ $?
+msg : msg.o start.o $(LIB)
+	$(LD) $(LDFLAGS) -o $@ $?
