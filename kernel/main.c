@@ -197,15 +197,6 @@ struct posix_tar_header
 						/* 500 */
 };
 
-PRIVATE int should_skip_checksum(const char *name)
-{
-	/*
-	 * 白名单校验：只有白名单中的系统命令才做校验。
-	 * 其它文件（如 kernel.bin/hdboot.bin/hdloader.bin/cmd.tar/dev_tty* 等）默认跳过。
-	 */
-	return !is_syscmd_whitelisted(name);
-}
-
 /*****************************************************************************
  *                                untar
  *****************************************************************************/
@@ -348,6 +339,9 @@ void shabby_shell(const char *tty_name)
 		if (argc == 0)
 			continue;
 
+		if (strcmp(argv[0], "/") == 0)
+			continue;
+		
 		int fd = open(argv[0], O_RDWR); // 拿到命令文件的文件描述符
 		if (fd == -1)
 		{
@@ -360,7 +354,7 @@ void shabby_shell(const char *tty_name)
 		}
 		else
 		{
-			int need_checksum = !should_skip_checksum(argv[0]);
+			int need_checksum = is_syscmd_whitelisted(argv[0]);
 			if (need_checksum)
 			{
 				if (verify_checksum(argv[0]) != 0)

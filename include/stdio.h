@@ -161,7 +161,6 @@ PUBLIC int	execv		(const char * path, char * argv[]);
 PUBLIC int	stat		(const char *path, struct stat *buf);
 
 /* lib/filecheck.c */
-PUBLIC int	get_checksum	(const char *path, char *md5_buf);
 PUBLIC int	calc_checksum	(const char *path, char *md5_buf);
 PUBLIC int	verify_checksum	(const char *path);
 PUBLIC int	refresh_checksums	();
