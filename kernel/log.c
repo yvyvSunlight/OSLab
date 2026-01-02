@@ -59,9 +59,7 @@
 #error "TASK_LOG is not defined."
 #endif
 
-/* =========================================================
- *  嵌套锁实现
- * ========================================================= */
+/* 嵌套锁实现 */
 #define EFLAGS_IF 0x200
 
 static inline u32 read_eflags(void)
@@ -91,9 +89,7 @@ static void log_unlock(void)
     }
 }
 
-/* =========================================================
- * flush 请求标志
- * ========================================================= */
+/* flush 请求标志 */
 static volatile int g_log_flush_req = 0;
 
 // flush 请求
@@ -115,9 +111,7 @@ PUBLIC int log_fetch_and_clear_flush_req(void)
     return v;
 }
 
-/* =========================================================
- * suppress
- * ========================================================= */
+/* suppress */
 static volatile int g_fs_suppress = 0;
 static volatile int g_hd_suppress = 0;
 
@@ -140,9 +134,7 @@ static void suppress_end(int set_fs, int set_hd, volatile int* self_flag)
     log_unlock();
 }
 
-/* =========================================================
- * RTC
- * ========================================================= */
+/* RTC */
 static int read_register_log(char reg_addr)
 {
     out_byte(CLK_ELE, reg_addr);
@@ -170,9 +162,7 @@ static int get_rtc_time_log(struct time *t)
     return 0;
 }
 
-/* =========================================================
- * 仅在 task_log 正在 RECEIVE(ANY/INTERRUPT) 阻塞时，注入一个 HARD_INT 唤醒
- * ========================================================= */
+/* 仅在 task_log 正在 RECEIVE(ANY/INTERRUPT) 阻塞时，注入一个 HARD_INT 唤醒 */
 static void log_try_wakeup_tasklog_nolock(void)
 {
     struct proc* p = &proc_table[TASK_LOG];
@@ -190,9 +180,7 @@ static void log_try_wakeup_tasklog_nolock(void)
     }
 }
 
-/* =========================================================
- * ring buffer
- * ========================================================= */
+/* ring buffer */
 typedef struct ringbuf {
     char* buf;
     int   size;
@@ -319,9 +307,7 @@ static ringbuf_t g_sys_rb = { g_sys_ring, SYS_RING_SIZE, 0, 0, 0 };
 static ringbuf_t g_fs_rb  = { g_fs_ring,  FS_RING_SIZE,  0, 0, 0 };
 static ringbuf_t g_hd_rb  = { g_hd_ring,  HD_RING_SIZE,  0, 0, 0 };
 
-/* =========================================================
- * name
- * ========================================================= */
+/* name */
 static const char* mm_type_name(int msgtype)
 {
     switch (msgtype) {
@@ -377,9 +363,7 @@ static const char* hd_type_name(int msgtype)
     }
 }
 
-/* =========================================================
- * IO helpers
- * ========================================================= */
+/* IO helpers */
 // 打开文件，若超过 max_bytes 则删除重建
 static int open_append_rotate(const char* path, int max_bytes)
 {
@@ -443,9 +427,7 @@ static void write_all_may_rotate(int* pfd, const char* path, int max_file,
     (void)max_file;
 }
 
-/* =========================================================
- * flush common（统一模板）
- * ========================================================= */
+/* flush common */
 // 将数据写入文件
 static void flush_common(ringbuf_t* rb, const char* path, int max_file,
                         int suppress_fs, int suppress_hd, volatile int* self_flag_to_set)
@@ -485,9 +467,7 @@ static void flush_common(ringbuf_t* rb, const char* path, int max_file,
     suppress_end(suppress_fs, suppress_hd, self_flag_to_set);
 }
 
-/* =========================================================
- * event APIs: 只写缓冲区
- * ========================================================= */
+/* event APIs: 只写缓冲区 */
 // 采集日志信息
 void log_sys_event(int msgtype, int src, int val)
 {
@@ -605,9 +585,7 @@ void log_hd_event(int msgtype, int src, int dev, int val)
     ring_push(&g_hd_rb, line, n);
 }
 
-/* =========================================================
- * flush APIs: 接口保持不变
- * ========================================================= */
+/* flush APIs: 接口保持不变 */
 void log_mm_flush(void)
 {
     flush_common(&g_mm_rb, MM_LOG_PATH, MM_LOG_MAX_FILE, 1, 1, 0);
