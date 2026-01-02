@@ -1,6 +1,7 @@
 /*
 @Author  : Ramoor
-@Date    : 2026-01-01
+@Date    : 2025-12-30
+@Update  : 2026-01-02
 */
 
 #include "type.h"
@@ -46,18 +47,23 @@
 #define LOG_ECHO_CONSOLE  0
 
 /* 日志开关 */
-//#define LOG_ENABLE_TASK 1
 #define MM_LOG_ENABLE  1
 #define SYS_LOG_ENABLE 1
 #define FS_LOG_ENABLE  1
 #define HD_LOG_ENABLE  1
 
+/* 达到该值就触发一次 flush 唤醒 */
+#define LOG_FLUSH_HIWAT_BYTES (4 * 1024)
+
+#ifndef TASK_LOG
+#error "TASK_LOG is not defined."
+#endif
+
 /* =========================================================
  *  嵌套锁实现
  * ========================================================= */
-#define EFLAGS_IF 0x200 // 定义中断允许标志位
+#define EFLAGS_IF 0x200
 
-// 安全读取EFLAGS寄存器
 static inline u32 read_eflags(void)
 {
     u32 f;
@@ -65,10 +71,9 @@ static inline u32 read_eflags(void)
     return f;
 }
 
-static int g_log_nest = 0;       // 嵌套层
-static int g_log_prev_if = 0;    // 上一层是否允许中断
+static int g_log_nest = 0;
+static int g_log_prev_if = 0;
 
-// 加锁（支持嵌套）
 static void log_lock(void)
 {
     if (g_log_nest == 0) {
@@ -78,7 +83,6 @@ static void log_lock(void)
     g_log_nest++;
 }
 
-// 解锁（支持嵌套）
 static void log_unlock(void)
 {
     g_log_nest--;
@@ -88,14 +92,36 @@ static void log_unlock(void)
 }
 
 /* =========================================================
- * enable / suppress
+ * flush 请求标志
  * ========================================================= */
+static volatile int g_log_flush_req = 0;
 
+// flush 请求
+PUBLIC void log_set_flush_req(void)
+{
+    log_lock();
+    g_log_flush_req = 1;
+    log_unlock();
+}
+
+// 获取并清除 flush 请求
+PUBLIC int log_fetch_and_clear_flush_req(void)
+{
+    int v;
+    log_lock();
+    v = g_log_flush_req;
+    g_log_flush_req = 0;
+    log_unlock();
+    return v;
+}
+
+/* =========================================================
+ * suppress
+ * ========================================================= */
 static volatile int g_fs_suppress = 0;
 static volatile int g_hd_suppress = 0;
 
-
-// 抑制日志，防止进入循环
+// 抑制 fs/hd flush，防止循环
 static void suppress_begin(int set_fs, int set_hd, volatile int* self_flag)
 {
     log_lock();
@@ -105,7 +131,6 @@ static void suppress_begin(int set_fs, int set_hd, volatile int* self_flag)
     log_unlock();
 }
 
-// 结束抑制日志
 static void suppress_end(int set_fs, int set_hd, volatile int* self_flag)
 {
     log_lock();
@@ -146,6 +171,26 @@ static int get_rtc_time_log(struct time *t)
 }
 
 /* =========================================================
+ * 仅在 task_log 正在 RECEIVE(ANY/INTERRUPT) 阻塞时，注入一个 HARD_INT 唤醒
+ * ========================================================= */
+static void log_try_wakeup_tasklog_nolock(void)
+{
+    struct proc* p = &proc_table[TASK_LOG];
+
+    if ((p->p_flags & RECEIVING) &&
+        (p->p_recvfrom == ANY || p->p_recvfrom == INTERRUPT) &&
+        p->p_msg) {
+
+        p->p_msg->source = INTERRUPT;
+        p->p_msg->type   = HARD_INT;
+
+        p->p_msg = 0;
+        p->p_flags &= ~RECEIVING;
+        p->p_recvfrom = NO_TASK;
+    }
+}
+
+/* =========================================================
  * ring buffer
  * ========================================================= */
 typedef struct ringbuf {
@@ -153,21 +198,19 @@ typedef struct ringbuf {
     int   size;
     int   head;
     int   tail;
+    int   kick_armed;
 } ringbuf_t;
 
-// 计算已用空间
 static int ring_used_nolock(const ringbuf_t* r)
 {
     return (r->head >= r->tail) ? (r->head - r->tail) : (r->size - (r->tail - r->head));
 }
 
-// 计算空闲空间
 static int ring_free_nolock(const ringbuf_t* r)
 {
     return r->size - ring_used_nolock(r) - 1;
 }
 
-// 丢弃最旧的数据
 static void ring_drop_oldest_nolock(ringbuf_t* r, int bytes)
 {
     while (bytes-- > 0) {
@@ -176,7 +219,7 @@ static void ring_drop_oldest_nolock(ringbuf_t* r, int bytes)
     }
 }
 
-// 推入数据
+// 将数据写入到 ring buffer
 static void ring_push(ringbuf_t* r, const char* s, int len)
 {
     if (!r || !s || len <= 0) return;
@@ -187,6 +230,7 @@ static void ring_push(ringbuf_t* r, const char* s, int len)
         s   += (len - (r->size - 1));
         len  = r->size - 1;
         r->head = r->tail = 0;
+        r->kick_armed = 0;
     }
 
     {
@@ -212,10 +256,21 @@ static void ring_push(ringbuf_t* r, const char* s, int len)
         }
     }
 
+    /* 事件驱动：达到阈值触发一次唤醒 */
+    {
+        int used = ring_used_nolock(r);
+        if (!r->kick_armed && used >= LOG_FLUSH_HIWAT_BYTES) {
+            r->kick_armed = 1;
+
+            g_log_flush_req = 1;          /* 聚合标志：让 task_log 不会睡死 */
+            log_try_wakeup_tasklog_nolock(); /* 若正在阻塞接收则立刻唤醒 */
+        }
+    }
+
     log_unlock();
 }
 
-// 弹出数据
+// 从 ring buffer 读取数据
 static int ring_pop(ringbuf_t* r, char* out, int maxlen)
 {
     int used, n, cont, left;
@@ -244,6 +299,11 @@ static int ring_pop(ringbuf_t* r, char* out, int maxlen)
         if (r->tail >= r->size) r->tail = 0;
     }
 
+    /* ring 清空后允许下一次再触发 kick */
+    if (ring_used_nolock(r) == 0) {
+        r->kick_armed = 0;
+    }
+
     log_unlock();
     return n;
 }
@@ -254,10 +314,10 @@ static char g_sys_ring[SYS_RING_SIZE];
 static char g_fs_ring[FS_RING_SIZE];
 static char g_hd_ring[HD_RING_SIZE];
 
-static ringbuf_t g_mm_rb  = { g_mm_ring,  MM_RING_SIZE,  0, 0 };
-static ringbuf_t g_sys_rb = { g_sys_ring, SYS_RING_SIZE, 0, 0 };
-static ringbuf_t g_fs_rb  = { g_fs_ring,  FS_RING_SIZE,  0, 0 };
-static ringbuf_t g_hd_rb  = { g_hd_ring,  HD_RING_SIZE,  0, 0 };
+static ringbuf_t g_mm_rb  = { g_mm_ring,  MM_RING_SIZE,  0, 0, 0 };
+static ringbuf_t g_sys_rb = { g_sys_ring, SYS_RING_SIZE, 0, 0, 0 };
+static ringbuf_t g_fs_rb  = { g_fs_ring,  FS_RING_SIZE,  0, 0, 0 };
+static ringbuf_t g_hd_rb  = { g_hd_ring,  HD_RING_SIZE,  0, 0, 0 };
 
 /* =========================================================
  * name
@@ -299,7 +359,6 @@ static const char* fs_type_name(int msgtype)
     case EXIT:   return "EXIT";
     case STAT:   return "STAT";
     case TRUNCATE: return "TRUNCATE";
-    case GET_CHECKSUM: return "GET_CHECKSUM";
     case CALC_CHECKSUM: return "CALC_CHECKSUM";
     case VERIFY_CHECKSUM: return "VERIFY_CHECKSUM";
     default:     return "UNKNOWN";
@@ -321,8 +380,8 @@ static const char* hd_type_name(int msgtype)
 /* =========================================================
  * IO helpers
  * ========================================================= */
-// 打开文件，若超过 max_bytes 则 rotate（删除重建）
- static int open_append_rotate(const char* path, int max_bytes)
+// 打开文件，若超过 max_bytes 则删除重建
+static int open_append_rotate(const char* path, int max_bytes)
 {
     int fd = open(path, O_RDWR);
     if (fd < 0) fd = open(path, O_CREAT | O_RDWR);
@@ -342,7 +401,7 @@ static const char* hd_type_name(int msgtype)
     return fd;
 }
 
-// 文件写入工具：尽量写完，返回写入的字节数
+// 正常写入
 static int write_all_once(int fd, const char* buf, int n)
 {
     int off = 0;
@@ -354,7 +413,7 @@ static int write_all_once(int fd, const char* buf, int n)
     return off;
 }
 
-// 特殊情况下的写入：写失败时尝试rotate
+// 写入并可能重置文件
 static void write_all_may_rotate(int* pfd, const char* path, int max_file,
                                 const char* buf, int n)
 {
@@ -367,32 +426,32 @@ static void write_all_may_rotate(int* pfd, const char* path, int max_file,
         int w = write(*pfd, buf + off, n - off);
         if (w > 0) {
             off += w;
-            rotated = 0; /* 有进展，允许下次再rotate */
+            rotated = 0;
             continue;
         }
 
-        /* write失败：尝试rotate一次 */
-        if (rotated) break; /* rotate也没用，避免死循环 */
+        if (rotated) break;
 
         close(*pfd);
         unlink(path);
         *pfd = open(path, O_CREAT | O_RDWR);
         if (*pfd < 0) break;
 
-        /* rotate后也可能需要再定位到末尾（新文件默认在0，无需lseek） */
         rotated = 1;
     }
 
-    (void)max_file; /* 保留参数，不改变原功能接口/语义（rotate阈值仍在open阶段生效） */
+    (void)max_file;
 }
 
 /* =========================================================
  * flush common（统一模板）
  * ========================================================= */
-// 通用flush函数模板
-static void flush_common(ringbuf_t* rb, const char* path, int max_file, int suppress_fs, int suppress_hd, volatile int* self_flag_to_set)
+// 将数据写入文件
+static void flush_common(ringbuf_t* rb, const char* path, int max_file,
+                        int suppress_fs, int suppress_hd, volatile int* self_flag_to_set)
 {
-    char tmp[512];
+    /* 关键优化：512 -> 4096 */
+    char tmp[4096];
     int n;
 
     n = ring_pop(rb, tmp, sizeof(tmp));
@@ -403,10 +462,8 @@ static void flush_common(ringbuf_t* rb, const char* path, int max_file, int supp
     {
         int fd = open_append_rotate(path, max_file);
         if (fd >= 0) {
-            /* 先正常写；若写失败则异常路径rotate并继续 */
             int wrote = write_all_once(fd, tmp, n);
             if (wrote < n) {
-                /* 让“满了不刷新”的情况能恢复写入 */
                 write_all_may_rotate(&fd, path, max_file, tmp + wrote, n - wrote);
             }
 
@@ -414,10 +471,14 @@ static void flush_common(ringbuf_t* rb, const char* path, int max_file, int supp
                 wrote = write_all_once(fd, tmp, n);
                 if (wrote < n) {
                     write_all_may_rotate(&fd, path, max_file, tmp + wrote, n - wrote);
-                    /* rotate后仍可能失败，继续下一块避免卡死 */
                 }
             }
             close(fd);
+        } else {
+            /* 打不开文件：允许后续再次触发 kick（避免卡死在 kick_armed=1） */
+            log_lock();
+            rb->kick_armed = 0;
+            log_unlock();
         }
     }
 
@@ -425,8 +486,9 @@ static void flush_common(ringbuf_t* rb, const char* path, int max_file, int supp
 }
 
 /* =========================================================
- * event APIs: 只写ring（不落盘）
+ * event APIs: 只写缓冲区
  * ========================================================= */
+// 采集日志信息
 void log_sys_event(int msgtype, int src, int val)
 {
     struct time t;

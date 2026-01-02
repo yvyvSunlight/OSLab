@@ -1,14 +1,3 @@
-/***************************************************************************
- ****************************************************************************
- * @file   misc.c
- * @brief  FS helpers + checksum helpers (key stays inside FS)
- * @author Forrest Y. Yu
- * @date   2008
- ****************************************************************************
- *****************************************************************************/
-
-/* Orange'S FS */
-
 #include "type.h"
 #include "stdio.h"
 #include "const.h"
@@ -22,6 +11,8 @@
 #include "keyboard.h"
 #include "proto.h"
 #include "hd.h"
+
+#include "sys/cmd_whitelist.h"
 
 /* ============================================================
  * checksum key: FS private (never stored or returned)
@@ -39,7 +30,7 @@ PRIVATE void ensure_checksum_key_inited(void)
 }
 
 /* ============================================================
- * MD5 实现（复制内核版本，符号保持 PRIVATE）
+ * MD5 实现
  * ============================================================ */
 typedef struct {
 	u32 state[4];
@@ -288,42 +279,36 @@ PRIVATE int calc_md5_for_file(struct inode *pin, char out[MD5_STR_BUF_LEN])
 	if (!pin || !out)
 		return -1;
 
-	/* 只对普通文件做校验，跳过设备文件/目录 */
 	if (is_special(pin->i_mode))
 		return -1;
 
-	/* 确保 key 已初始化 */
 	ensure_checksum_key_inited();
 
-	/* key 转小端字节序 */
 	key_bytes[0] = (u8)(s_ck_key & 0xFF);
 	key_bytes[1] = (u8)((s_ck_key >> 8) & 0xFF);
 	key_bytes[2] = (u8)((s_ck_key >> 16) & 0xFF);
 	key_bytes[3] = (u8)((s_ck_key >> 24) & 0xFF);
 
-	/* MD5(key || file || key) */
+	// MD5(key || file || key)
 	md5_init(&ctx);
-	md5_update(&ctx, key_bytes, 4);  /* 前置 key */
+	md5_update(&ctx, key_bytes, 4);  // 前置 key
 
-	/* 按扇区循环读取文件内容 */
+	// 按扇区循环读取文件内容
 	u32 bytes_left = pin->i_size;
 	u32 sect_nr = pin->i_start_sect;
 
 	while (bytes_left > 0) {
-		/* 读一个扇区到 fsbuf */
 		RD_SECT(pin->i_dev, sect_nr);
 
-		/* 本次要处理的字节数 */
 		u32 chunk = (bytes_left < SECTOR_SIZE) ? bytes_left : SECTOR_SIZE;
 
-		/* 更新 MD5 */
 		md5_update(&ctx, (u8*)fsbuf, chunk);
 
 		bytes_left -= chunk;
 		sect_nr++;
 	}
 
-	md5_update(&ctx, key_bytes, 4);  /* 后置 key */
+	md5_update(&ctx, key_bytes, 4);  // 后置 key
 	md5_final(digest, &ctx);
 
 	/* 转为 32 字符 hex 字符串 */
@@ -374,41 +359,6 @@ PUBLIC int do_stat()
 		  (void*)va2la(TASK_FS, &s),
 		  sizeof(struct stat));
 
-	return 0;
-}
-
-/****************************************************************************
- *                           do_get_checksum
- *****************************************************************************/
-/* 只返回 inode 中存储的 md5_checksum（32字节） */
-PUBLIC int do_get_checksum()
-{
-	char pathname[MAX_PATH];
-	char filename[MAX_PATH];
-
-	int name_len = fs_msg.NAME_LEN;
-	int src = fs_msg.source;
-	assert(name_len < MAX_PATH);
-	phys_copy((void*)va2la(TASK_FS, pathname),
-		  (void*)va2la(src, fs_msg.PATHNAME),
-		  name_len);
-	pathname[name_len] = 0;
-
-	int inode_nr = search_file(pathname);
-	if (inode_nr == INVALID_INODE)
-		return -1;
-
-	struct inode * dir_inode;
-	if (strip_path(filename, pathname, &dir_inode) != 0)
-		return -1;
-
-	struct inode * pin = get_inode(dir_inode->i_dev, inode_nr);
-
-	phys_copy((void*)va2la(src, fs_msg.BUF),
-		  (void*)va2la(TASK_FS, pin->md5_checksum),
-		  MD5_HASH_LEN);
-
-	put_inode(pin);
 	return 0;
 }
 
@@ -512,7 +462,7 @@ PUBLIC int do_refresh_checksums()
 {
 	int src = fs_msg.source;
 
-	/* 仅允许 INIT 进程调用，防止普通用户绕过校验 */
+	// 仅允许 INIT 进程调用，防止普通用户绕过校验
 	if (src != INIT)
 		return -1;
 
@@ -544,17 +494,8 @@ PUBLIC int do_refresh_checksums()
 			memcpy(name, pde->name, MAX_FILENAME_LEN);
 			name[MAX_FILENAME_LEN] = 0;
 
-			/* 跳过特殊文件 */
-			if (name[0] == '.')
-				continue;
-			if (strcmp(name, "cmd.tar") == 0)
-				continue;
-			if (strcmp(name, "kernel.bin") == 0 ||
-			    strcmp(name, "hdboot.bin") == 0 ||
-			    strcmp(name, "hdloader.bin") == 0)
-				continue;
-			/* /dev_tty0 /dev_tty1 /dev_tty2 ... */
-			if (memcmp(name, "dev_tty", 7) == 0)
+			/* 白名单：仅对已实现的系统命令刷新校验和 */
+			if (!is_syscmd_whitelisted(name))
 				continue;
 
 			struct inode * pin = get_inode(dev, pde->inode_nr);

@@ -1,7 +1,7 @@
 /*
 @Author  : Ramoor
 @Date    : 2025-12-30
-@Update  : 2026-01-01
+@Update  : 2026-01-02
 */
 
 #include "type.h"
@@ -25,17 +25,16 @@ static inline void cpu_relax(void)
     __asm__ __volatile__("pause");
 }
 
+/* 仅用于启动初期等待（一次性），保持原行为 */
 static void delay_ms_light(int ms)
 {
     int dt = (ms * HZ) / 1000;
     if (dt < 1) dt = 1;
 
-    /* 用有符号差值写法，避免 ticks 将来溢出时逻辑出错 */
     int target = ticks + dt;
 
     while ((int)(ticks - target) < 0) {
         int cur = ticks;
-        /* 等待下一个 tick 到来 */
         while (ticks == cur && (int)(ticks - target) < 0) {
             cpu_relax();
         }
@@ -44,17 +43,24 @@ static void delay_ms_light(int ms)
 
 PUBLIC void task_log(void)
 {
+    MESSAGE msg;
+
     /* 给 FS/HD 初始化留时间：保持原行为 */
     delay_ms_light(2000);
 
     while (1) {
-        /* 保持原行为：每轮都 flush 四类日志 */
+        // 如果没有 flush 请求，就阻塞睡眠等待消息唤醒
+        if (!log_fetch_and_clear_flush_req()) {
+            reset_msg(&msg);
+            send_recv(RECEIVE, ANY, &msg);
+            /* 醒来后再清一次，合并多次 kick */
+            (void)log_fetch_and_clear_flush_req();
+        }
+
+        /* flush 四类日志（flush_common 内部会判空） */
         log_mm_flush();
         log_sys_flush();
         log_fs_flush();
         log_hd_flush();
-
-        /* 保持原行为：500ms 一次 */
-        delay_ms_light(500);
     }
 }

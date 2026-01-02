@@ -19,32 +19,6 @@
 #include "proto.h"
 
 /*****************************************************************************
- *                                get_checksum
- *****************************************************************************/
-/**
- * 获取文件的MD5校验和
- * 
- * @param pathname   文件路径
- * @param md5_buf    输出缓冲区（至少33字节）
- * @return           0 成功，-1 失败
- */
-PUBLIC int get_checksum(const char *pathname, char *md5_buf)
-{
-    MESSAGE msg;
-
-    msg.type     = GET_CHECKSUM;
-    msg.PATHNAME = (void*)pathname;
-    msg.NAME_LEN = strlen(pathname);
-    msg.BUF      = (void*)md5_buf;      /* 输出缓冲区 */
-    msg.BUF_LEN  = 33;                  /* 缓冲区大小 */
-
-    send_recv(BOTH, TASK_FS, &msg);
-    assert(msg.type == SYSCALL_RET);
-
-    return msg.RETVAL;
-}
-
-/*****************************************************************************
  *                                calc_checksum
  *****************************************************************************/
 PUBLIC int calc_checksum(const char *pathname, char *md5_buf)
