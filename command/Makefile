@@ -12,8 +12,8 @@ CFLAGS		= -I ../include/ -I ../include/sys/ -c -fno-builtin -fno-stack-protector
 LDFLAGS		= -Ttext 0x1000
 DASMFLAGS	= -D
 LIB		= ../lib/orangescrt.a
-# BIN		= echo pwd ls kill touch edit rm ps clear cat ret2text ret2shellcode ret2lib pstackof inject
-BIN		= echo pwd ls kill touch edit rm ps clear cat ret2text ret2shellcode ret2lib pstackof
+# BIN		= echo pwd ls kill touch edit rm ps clear cat ret2txt ret2sh ret2lib pstof inject
+BIN		= echo pwd ls kill touch edit rm ps clear cat ret2txt ret2sh ret2lib pstof inject msg
 
 
 # All Phony Targets
@@ -104,16 +104,16 @@ clear.o: clear.c ../include/stdio.h
 clear : clear.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
-ret2text.o: ../poc/ret2text.c ../include/stdio.h
+ret2txt.o: ../poc/ret2txt.c ../include/stdio.h
 	$(CC) $(CFLAGS) -o $@ $<
 
-ret2text : ret2text.o start.o $(LIB)
+ret2txt : ret2txt.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
-ret2shellcode.o: ../poc/ret2shellcode.c ../include/stdio.h
+ret2sh.o: ../poc/ret2sh.c ../include/stdio.h
 	$(CC) $(CFLAGS) -o $@ $<
 
-ret2shellcode : ret2shellcode.o start.o $(LIB)
+ret2sh : ret2sh.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
 ret2lib.o: ../poc/ret2lib.c ../include/stdio.h
@@ -122,14 +122,20 @@ ret2lib.o: ../poc/ret2lib.c ../include/stdio.h
 ret2lib : ret2lib.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
-pstackof.o: ../poc/pstackof.c ../include/stdio.h
+pstof.o: ../poc/pstof.c ../include/stdio.h
 	$(CC) $(CFLAGS) -o $@ $<
 	
-pstackof : pstackof.o start.o $(LIB)
+pstof : pstof.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
 inject.o: ../poc/inject.c ../include/stdio.h ../include/type.h ../include/sys/const.h ../include/string.h
 	$(CC) $(CFLAGS) -o $@ $<
 
 inject : inject.o start.o $(LIB)
+	$(LD) $(LDFLAGS) -o $@ $?
+
+msg.o: ../poc/msg.c ../include/stdio.h ../include/type.h ../include/string.h ../include/sys/const.h ../include/sys/proto.h
+	$(CC) $(CFLAGS) -o $@ $<
+
+msg : msg.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
