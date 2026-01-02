@@ -10,6 +10,7 @@ bits 32
 global _start
 
 _start:
+	xor     ebp,  ebp
 	push	eax
 	push	ecx
 	call	main

@@ -120,9 +120,10 @@ PUBLIC int do_exec()
 	proc_table[src].regs.ecx = argc; /* argc */
 	proc_table[src].regs.eax = (u32)orig_stack; /* argv */
 
-	/* setup eip & esp */
+	/* setup eip & esp & ebp */
 	proc_table[src].regs.eip = elf_hdr->e_entry; /* @see _start.asm */
 	proc_table[src].regs.esp = PROC_IMAGE_SIZE_DEFAULT - PROC_ORIGIN_STACK;
+	proc_table[src].regs.ebp = 0;
 
 	// /* init stack bounds for stack NX checks (linear addresses) */
 	// u32 seg_base, seg_limit_bytes;
