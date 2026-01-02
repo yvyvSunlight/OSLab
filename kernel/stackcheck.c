@@ -173,9 +173,9 @@ PUBLIC void stackcheck_on_tick()
 
     if (p_proc_ready != 0)
     {
-        printl("[STACK CHECK] Validity check started...\n");
+        // printl("[STACK CHECK] Validity check started...\n");
         stackcheck_proc(p_proc_ready);
-        printl("[STACK CHECK] Validity check finished...\n");
+        // printl("[STACK CHECK] Validity check finished...\n");
     }
 }
 
