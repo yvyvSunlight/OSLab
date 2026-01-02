@@ -64,6 +64,7 @@ PRIVATE void retaddr_check_user(struct proc *p, int pid)
     u32 ebp_la;
     u32 ret_addr;
     u32 ebp_off = p->regs.ebp;
+    u32 pre_ebp;
 
     if (ebp_off == 0)
     {
@@ -75,6 +76,12 @@ PRIVATE void retaddr_check_user(struct proc *p, int pid)
     int frame_count = 0;
     while (frame_count < STACKCHECK_MAX_FRAMES)
     {
+        if (ebp_off >= seg_limit - 0x400 || ebp_off < p->regs.esp)
+        {
+            panic("[EBP CHECK] USER pid=%d name=%s frame=%d: INVALID ebp=0x%x out of stack [0x%x,0x%x)\n",
+                  pid, p->name, frame_count, ebp_off, p->regs.esp, p->stack_high - 0x400);
+        }
+        pre_ebp = ebp_off;
         ebp_la = seg_base + ebp_off;
         // 下一个ebp
         ebp_off = *(u32*)(ebp_la);
@@ -82,11 +89,22 @@ PRIVATE void retaddr_check_user(struct proc *p, int pid)
         {
             return;
         }
+        if(ebp_off <= pre_ebp)
+        {
+            panic("[EBP CHECK] USER pid=%d name=%s frame=%d: INVALID ebp=0x%x which less than pre_ebp=0x%x\n",
+                  pid, p->name, frame_count, ebp_off, pre_ebp);
+        }
         ret_addr = *(u32*)(ebp_la + 4);
         if(ret_addr >= p->stack_low && ret_addr < p->stack_high)
         {
             panic("[RETADDR CHECK] USER pid=%d name=%s frame=%d: INVALID ret_addr=0x%x in stack [0x%x,0x%x)\n",
                   pid, p->name, frame_count, ret_addr, p->stack_low, p->stack_high);
+            return;
+        }
+        if(ret_addr >= seg_limit)
+        {
+            panic("[RETADDR CHECK] USER pid=%d name=%s frame=%d: INVALID ret_addr=0x%x out of limit 0x%x\n",
+                  pid, p->name, frame_count, ret_addr, seg_limit);
             return;
         }
         frame_count++;

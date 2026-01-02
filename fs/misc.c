@@ -465,14 +465,14 @@ PUBLIC int do_refresh_checksums()
 			memcpy(name, pde->name, MAX_FILENAME_LEN);
 			name[MAX_FILENAME_LEN] = 0;
 
-			/* 白名单：仅对已实现的系统命令刷新校验和 */
+			// 白名单：仅对已实现的系统命令刷新校验和
 			if (!is_syscmd_whitelisted(name))
 				continue;
 
 			struct inode * pin = get_inode(dev, pde->inode_nr);
 			int imode = pin->i_mode & I_TYPE_MASK;
 
-			/* 只对普通文件做校验 */
+			// 只对普通文件做校验
 			if (imode == I_REGULAR) {
 				char md5_str[MD5_STR_BUF_LEN];
 				if (calc_md5_for_file(pin, md5_str) == 0) {
