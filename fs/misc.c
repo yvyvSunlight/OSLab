@@ -14,9 +14,8 @@
 
 #include "sys/cmd_whitelist.h"
 
-/* ============================================================
- * checksum key: FS private (never stored or returned)
- * ============================================================ */
+
+// checksum key: FS private (never stored or returned)
 PRIVATE int s_ck_inited = 0;
 PRIVATE u32 s_ck_key = 0;
 
@@ -277,7 +276,7 @@ PRIVATE int calc_md5_for_file(struct inode *pin, char out[MD5_STR_BUF_LEN])
 	key_bytes[2] = (u8)((s_ck_key >> 16) & 0xFF);
 	key_bytes[3] = (u8)((s_ck_key >> 24) & 0xFF);
 
-	// MD5(key || file || key)
+	// MD5(key||file_content||key)
 	md5_init(&ctx);
 	md5_update(&ctx, key_bytes, 4);  // 前置 key
 
@@ -299,7 +298,7 @@ PRIVATE int calc_md5_for_file(struct inode *pin, char out[MD5_STR_BUF_LEN])
 	md5_update(&ctx, key_bytes, 4);  // 后置 key
 	md5_final(digest, &ctx);
 
-	/* 转为 32 字符 hex 字符串 */
+	// 转为 32 字符 hex 字符串
 	bytes_to_hex(digest, 16, out);
 
 	return 0;
@@ -350,42 +349,42 @@ PUBLIC int do_stat()
 	return 0;
 }
 
-PUBLIC int do_calc_checksum()
-{
-	char pathname[MAX_PATH];
-	char filename[MAX_PATH];
+// PUBLIC int do_calc_checksum()
+// {
+// 	char pathname[MAX_PATH];
+// 	char filename[MAX_PATH];
 
-	int name_len = fs_msg.NAME_LEN;
-	int src = fs_msg.source;
-	assert(name_len < MAX_PATH);
-	phys_copy((void*)va2la(TASK_FS, pathname),
-		  (void*)va2la(src, fs_msg.PATHNAME),
-		  name_len);
-	pathname[name_len] = 0;
+// 	int name_len = fs_msg.NAME_LEN;
+// 	int src = fs_msg.source;
+// 	assert(name_len < MAX_PATH);
+// 	phys_copy((void*)va2la(TASK_FS, pathname),
+// 		  (void*)va2la(src, fs_msg.PATHNAME),
+// 		  name_len);
+// 	pathname[name_len] = 0;
 
-	int inode_nr = search_file(pathname);
-	if (inode_nr == INVALID_INODE)
-		return -1;
+// 	int inode_nr = search_file(pathname);
+// 	if (inode_nr == INVALID_INODE)
+// 		return -1;
 
-	struct inode * dir_inode;
-	if (strip_path(filename, pathname, &dir_inode) != 0)
-		return -1;
+// 	struct inode * dir_inode;
+// 	if (strip_path(filename, pathname, &dir_inode) != 0)
+// 		return -1;
 
-	struct inode * pin = get_inode(dir_inode->i_dev, inode_nr);
+// 	struct inode * pin = get_inode(dir_inode->i_dev, inode_nr);
 
-	char md5_str[MD5_STR_BUF_LEN];
-	if (calc_md5_for_file(pin, md5_str) != 0) {
-		put_inode(pin);
-		return -1;
-	}
+// 	char md5_str[MD5_STR_BUF_LEN];
+// 	if (calc_md5_for_file(pin, md5_str) != 0) {
+// 		put_inode(pin);
+// 		return -1;
+// 	}
 
-	phys_copy((void*)va2la(src, fs_msg.BUF),
-		  (void*)va2la(TASK_FS, md5_str),
-		  MD5_HASH_LEN);
+// 	phys_copy((void*)va2la(src, fs_msg.BUF),
+// 		  (void*)va2la(TASK_FS, md5_str),
+// 		  MD5_HASH_LEN);
 
-	put_inode(pin);
-	return 0;
-}
+// 	put_inode(pin);
+// 	return 0;
+// }
 
 PUBLIC int do_verify_checksum()
 {
@@ -449,11 +448,11 @@ PUBLIC int do_refresh_checksums()
 
 	for (i = 0; i < nr_dir_blks; i++) {
 		RD_SECT(dev, dir_blk0 + i);
-		/*
-		 * 注意：calc_md5_for_file() 内部会调用 RD_SECT 并覆写 fsbuf。
-		 * 如果直接用 fsbuf 遍历目录项，pde 会在第一次算 hash 后失效。
-		 * 所以这里先把目录扇区拷贝出来，再在本地缓冲区上遍历。
-		 */
+
+		// fix bug：calc_md5_for_file() 内部会调用 RD_SECT 并覆写 fsbuf。
+		// 如果直接用 fsbuf 遍历目录项，pde 会在第一次算 hash 后失效。
+		// 所以这里先把目录扇区拷贝出来，再在本地缓冲区上遍历。
+
 		memcpy(dir_sect_buf, (char*)fsbuf, SECTOR_SIZE);
 		struct dir_entry * pde = (struct dir_entry *)dir_sect_buf;
 

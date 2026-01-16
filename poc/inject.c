@@ -25,6 +25,11 @@ void help() {
 
 /* 主函数：解析命令行参数并调用相应的 POC */
 int main(int argc, char *argv[]) {
+    if (argc < 2)
+    {
+        help();
+        return 0;
+    }
     inject(argv[1]); // 直接执行 ELF 注入
     return 0;
 }

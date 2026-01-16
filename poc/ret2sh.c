@@ -20,7 +20,7 @@ void ret2shellcode() {
         buff[i] = 0;
     }
     addr = &buff[72];
-    for (i = 0; i < 6; i++) {
+    for (i = 0; i < 3; i++) {
         addr[i] = buff;
     }
 }

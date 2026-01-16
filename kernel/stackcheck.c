@@ -15,7 +15,7 @@
 
 PRIVATE int is_user(int pid)
 {
-    return (pid >= NR_TASKS + NR_NATIVE_PROCS);
+    return (pid >= NR_TASKS + NR_NATIVE_PROCS + 2);
 }
 
 PRIVATE void get_seg_info(struct descriptor *d, u32 *base, u32 *limit_bytes)
@@ -70,6 +70,7 @@ PRIVATE void retaddr_check_user(struct proc *p, int pid)
     {
         return;
     }
+    
     u32 seg_base, seg_limit;
     get_seg_info(&p->ldts[INDEX_LDT_RW], &seg_base, &seg_limit);
 

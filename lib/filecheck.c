@@ -10,20 +10,20 @@
 #include "global.h"
 #include "proto.h"
 
-PUBLIC int calc_checksum(const char *pathname, char *md5_buf)
-{
-    MESSAGE msg;
+// PUBLIC int calc_checksum(const char *pathname, char *md5_buf)
+// {
+//     MESSAGE msg;
 
-    msg.type     = CALC_CHECKSUM;
-    msg.PATHNAME = (void*)pathname;
-    msg.NAME_LEN = strlen(pathname);
-    msg.BUF      = (void*)md5_buf;
-    msg.BUF_LEN  = 33;
+//     msg.type     = CALC_CHECKSUM;
+//     msg.PATHNAME = (void*)pathname;
+//     msg.NAME_LEN = strlen(pathname);
+//     msg.BUF      = (void*)md5_buf;
+//     msg.BUF_LEN  = 33;
 
-    send_recv(BOTH, TASK_FS, &msg);
-    assert(msg.type == SYSCALL_RET);
-    return msg.RETVAL;
-}
+//     send_recv(BOTH, TASK_FS, &msg);
+//     assert(msg.type == SYSCALL_RET);
+//     return msg.RETVAL;
+// }
 
 PUBLIC int verify_checksum(const char *pathname)
 {
