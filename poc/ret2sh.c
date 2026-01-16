@@ -11,9 +11,9 @@ unsigned char shellcode_dump[] = {
 
 void ret2shellcode() {
     
-#ifdef ENABLE_CANARY
-    int canary = put_canary();
-#endif
+// #ifdef ENABLE_CANARY
+//     int canary = put_canary();
+// #endif
     char buff[72] = {0};
     for (i = 0; i < 72; i++) {
         if (0 == shellcode_dump[i])
@@ -29,9 +29,9 @@ void ret2shellcode() {
         addr[i] = buff;
     }
 
-#ifdef ENABLE_CANARY
-    canary_check(canary);
-#endif
+// #ifdef ENABLE_CANARY
+//     canary_check(canary);
+// #endif
 }
 
 void main(int argc, char* argv[]) {

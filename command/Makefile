@@ -139,6 +139,3 @@ inject_only.o: ../poc/inject_only.c ../include/stdio.h ../include/type.h ../incl
 
 inject_only : inject_only.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
-
-msg : msg.o start.o $(LIB)
-	$(LD) $(LDFLAGS) -o $@ $?
