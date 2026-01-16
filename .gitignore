@@ -37,6 +37,7 @@ command/ret2shellcode
 command/cat
 command/pstackof
 command/inject
+command/msg
 
 build_and_update.sh
 .gdb_history
