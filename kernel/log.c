@@ -345,7 +345,8 @@ static const char* fs_type_name(int msgtype)
     case EXIT:   return "EXIT";
     case STAT:   return "STAT";
     case TRUNCATE: return "TRUNCATE";
-    case CALC_CHECKSUM: return "CALC_CHECKSUM";
+    // case CALC_CHECKSUM: return "CALC_CHECKSUM";
+    case REFRESH_CHECKSUMS: return "REFRESH_CHECKSUMS";
     case VERIFY_CHECKSUM: return "VERIFY_CHECKSUM";
     default:     return "UNKNOWN";
     }

@@ -12,8 +12,8 @@ CFLAGS		= -I ../include/ -I ../include/sys/ -c -fno-builtin -fno-stack-protector
 LDFLAGS		= -Ttext 0x1000
 DASMFLAGS	= -D
 LIB		= ../lib/orangescrt.a
-# BIN		= echo pwd ls kill touch edit rm ps clear cat ret2txt ret2sh ret2lib pstof inject
-BIN		= echo pwd ls kill touch edit rm ps clear cat ret2txt ret2sh ret2lib pstof msg
+BIN		= echo pwd ls kill touch edit rm ps clear cat ret2txt ret2sh ret2lib pstof inject_only
+# BIN		= echo pwd ls kill touch edit rm ps clear cat ret2txt ret2sh ret2lib pstof 
 
 
 # All Phony Targets
@@ -134,8 +134,19 @@ inject.o: ../poc/inject.c ../include/stdio.h ../include/type.h ../include/sys/co
 inject : inject.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
+<<<<<<< HEAD
 msg.o: ../poc/msg.c ../include/stdio.h ../include/type.h ../include/string.h ../include/sys/const.h
 	$(CC) $(CFLAGS) -o $@ $<
+=======
+inject_only.o: ../poc/inject_only.c ../include/stdio.h ../include/type.h ../include/sys/const.h ../include/string.h
+	$(CC) $(CFLAGS) -o $@ $<
+
+inject_only : inject_only.o start.o $(LIB)
+	$(LD) $(LDFLAGS) -o $@ $?
+
+# msg.o: ../poc/msg.c ../include/stdio.h ../include/type.h ../include/string.h ../include/sys/const.h ../include/sys/proto.h
+# 	$(CC) $(CFLAGS) -o $@ $<
+>>>>>>> 47299d9 (feat: add inject_only to verify filecheck function)
 
 msg : msg.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
