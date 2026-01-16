@@ -463,8 +463,8 @@ void TestA()
 	int iter = 0;
 	while (1)
 	{
-		printl("A#%d\n", iter++);
-		milli_delay(DEMO_PRINT_INTERVAL_MS);
+		// printl("A#%d\n", iter++);
+		// milli_delay(DEMO_PRINT_INTERVAL_MS);
 	}
 }
 
@@ -476,8 +476,8 @@ void TestB()
 	int iter = 0;
 	while (1)
 	{
-		printl("B#%d\n", iter++);
-		milli_delay(DEMO_PRINT_INTERVAL_MS);
+		// printl("B#%d\n", iter++);
+		// milli_delay(DEMO_PRINT_INTERVAL_MS);
 	}
 }
 
@@ -487,13 +487,13 @@ void TestB()
 void TestC()
 {
 	/* Start a bit later to show preemption when it joins. */
-	milli_delay(TESTC_START_DELAY_MS);
+	// milli_delay(TESTC_START_DELAY_MS);
 
 	int iter = 0;
 	while (1)
 	{
-		printl("C#%d\n", iter++);
-		milli_delay(DEMO_PRINT_INTERVAL_MS);
+		// printl("C#%d\n", iter++);
+		// milli_delay(DEMO_PRINT_INTERVAL_MS);
 	}
 }
 

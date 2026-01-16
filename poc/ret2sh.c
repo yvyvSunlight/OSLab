@@ -1,6 +1,7 @@
 #include <stdio.h>
 int i;
 int* addr;
+#define ENABLE_CANARY
 
 unsigned char shellcode_dump[] = {
     0x55,         // push   ebp
@@ -9,6 +10,10 @@ unsigned char shellcode_dump[] = {
 };
 
 void ret2shellcode() {
+    
+#ifdef ENABLE_CANARY
+    int canary = put_canary();
+#endif
     char buff[72] = {0};
     for (i = 0; i < 72; i++) {
         if (0 == shellcode_dump[i])
@@ -23,6 +28,10 @@ void ret2shellcode() {
     for (i = 0; i < 6; i++) {
         addr[i] = buff;
     }
+
+#ifdef ENABLE_CANARY
+    canary_check(canary);
+#endif
 }
 
 void main(int argc, char* argv[]) {
