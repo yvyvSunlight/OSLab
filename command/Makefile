@@ -134,19 +134,11 @@ inject.o: ../poc/inject.c ../include/stdio.h ../include/type.h ../include/sys/co
 inject : inject.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
-<<<<<<< HEAD
-msg.o: ../poc/msg.c ../include/stdio.h ../include/type.h ../include/string.h ../include/sys/const.h
-	$(CC) $(CFLAGS) -o $@ $<
-=======
 inject_only.o: ../poc/inject_only.c ../include/stdio.h ../include/type.h ../include/sys/const.h ../include/string.h
 	$(CC) $(CFLAGS) -o $@ $<
 
 inject_only : inject_only.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
-
-# msg.o: ../poc/msg.c ../include/stdio.h ../include/type.h ../include/string.h ../include/sys/const.h ../include/sys/proto.h
-# 	$(CC) $(CFLAGS) -o $@ $<
->>>>>>> 47299d9 (feat: add inject_only to verify filecheck function)
 
 msg : msg.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
